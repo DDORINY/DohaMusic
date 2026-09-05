@@ -122,7 +122,7 @@ function WorkingCompositionEditorSession({
       ));
       return canonical;
     } finally {
-      if (conflictRecovery && generation === recoveryGeneration.current) setRecoveryState("ready");
+      if (generation === recoveryGeneration.current) setRecoveryState("ready");
     }
   }, [projectId, queryClient, queryKey]);
 
@@ -134,7 +134,8 @@ function WorkingCompositionEditorSession({
       || apiError?.code === "NETWORK_ERROR"
       || apiError?.code === "REQUEST_TIMEOUT") {
       try {
-        await reconcile(true);
+        const canonical = await reconcile(true);
+        if (canonical === null) return;
         setMessage("다른 편집자의 변경을 감지해 서버의 최신 편집 상태와 Undo/Redo 기록을 불러왔습니다. 변경 내용을 확인한 뒤 다시 적용해 주세요.");
       } catch {
         // The original structured error remains the useful failure.
