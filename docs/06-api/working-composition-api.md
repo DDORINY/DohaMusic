@@ -113,3 +113,8 @@ Job 생성은 현재 source eligibility를 재검증해 >16개도 손실 없이 
 WorkingComposition Router는 APIRoute 24개, OpenAPI Path 23개, Operation 24개이며 operation ID 중복은 0개다. 전체 application 실측은 최종 OpenAPI Gate 결과를 따른다. 기존 Legacy Pipeline의 GET/HEAD 병합 route 두 곳에서 발생하던 global duplicate operation ID warning 2종은 이 작업 범위에서 변경하지 않았으며 새 Loop restore operation ID 충돌은 0개다.
 
 이 22개는 Product API이므로 Workspace Resource Endpoint 30/64 분모에는 포함하지 않는다.
+
+
+## Multi-user conflict recovery
+
+WorkingComposition mutation, Undo/Redo, Commit, Checkout과 Preview create는 aggregate `expected_revision`을 authority로 사용한다. stale request는 기존 `WORKING_COMPOSITION_REVISION_CONFLICT`로 fail-closed하며 canonical mutation, revision 증가, history cursor 이동과 completion 생성은 0건이다. Frontend는 별도 recovery endpoint 없이 WorkingComposition GET과 history GET을 순서대로 다시 읽는다. stale intent 자동 retry/merge는 하지 않으며 response-loss의 same-key completion replay와 구분한다. 자세한 결정은 [ADR-057](../11-decisions/ADR-057-working-composition-multi-user-conflict-recovery-authority.md)을 따른다.

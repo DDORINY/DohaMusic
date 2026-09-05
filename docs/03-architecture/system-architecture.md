@@ -14,7 +14,7 @@
 | DohaLM·DohaAudio·DohaVocal 책임 | DohaVocal strict DTO·HTTP Transport Foundation 존재, Worker·Artifact production 통합 미구현, 로컬 호환 Adapter 유지 | [DohaVocal Consumer Contract](dohavocal-consumer-contract.md), [저장소와 Provider 경계](repository-provider-boundaries.md) |
 | Workspace·AssetVersion·Artifact | Entity·Service·공개 API와 local Storage 기반 존재 | [Workspace Artifact 모델](workspace-artifact-model.md), [Storage 계약](artifact-storage-contract.md) |
 | Job | Legacy ThreadPool과 Workspace Job 실행 기반·API 존재 | Provider dispatch wiring·background daemon 미구현 |
-| CompositionSnapshot | 불변 Snapshot Entity·Application·API, Working/Track/Clip persistence·atomic mutation Service와 Frontend Clip Copy·Commit·Gain/Fade/Loop UI·Backend persistent history 소비 존재 | multi-user recovery·Section·Mixer 미구현 |
+| CompositionSnapshot | 불변 Snapshot Entity·Application·API, Working/Track/Clip persistence·atomic mutation Service와 Frontend Clip Copy·Commit·Gain/Fade/Loop UI·Backend persistent history 소비 존재 | multi-user conflict recovery 완료; Section·Mixer 미구현 |
 | MusicIntent | 문서상 Common Contract 재사용 기준, Runtime 미연결 | DohaLM 제안 → DohaMusic orchestration → Provider 실행 |
 | ReferenceAnalysis | Runtime·ingestion 미구현 | 허용 Reference → FeatureRecord → planning context |
 | LearningCandidate | review·Dataset 연결 미구현 | RightsMetadata·TrainingEligibility·DatasetVersion Gate |

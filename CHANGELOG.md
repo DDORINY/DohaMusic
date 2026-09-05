@@ -1,4 +1,4 @@
-﻿Warning: truncated output (original token count: 20460)
+Warning: truncated output (original token count: 20460)
 Total output lines: 715
 
 # 변경 이력
@@ -10,6 +10,12 @@ Total output lines: 715
 DohaMusic 프로젝트의 주요 변경 사항을 기록한다. 일반 작업은 `[Unreleased]`에 기록하고 프로젝트 버전 정책은 구현 단계에서 결정한다.
 
 ## [Unreleased]
+
+### 추가 — Multi-user Concurrent Editing Recovery
+
+- ADR-057에서 WorkingComposition aggregate revision CAS를 multi-user authority로 확정하고 same/different field·different Clip·Undo/Redo·structural·Commit/Checkout/Preview stale request를 fail-closed한다.
+- Frontend conflict recovery를 generation-guarded canonical WorkingComposition/history refetch로 강화했다. stale intent 자동 retry/merge 없이 pending draft를 canonical 값으로 reset하고, 존재하는 selected Clip ID만 유지한다.
+- Backend production·API·error taxonomy·persistence·migration은 변경하지 않았고 Alembic head `20260905_0028`을 유지한다.
 
 - Backend가 Clip Gain/Fade/Loop의 canonical 전후 상태를 원자적으로 기록하는 persistent WorkingComposition history journal, cursor, undo/redo API와 migration 0028을 추가했다.
 - Frontend Undo/Redo를 Backend history projection과 mutation endpoint로 전환해 reload 후 cursor를 복구하고, Gain/Fade/Loop strict LIFO·redo invalidation·revision conflict reconciliation·Preview stale·structural/Commit/Checkout barrier를 일관되게 적용했다.

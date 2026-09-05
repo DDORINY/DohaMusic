@@ -1,4 +1,4 @@
-﻿# DohaMusic 마스터 로드맵
+# DohaMusic 마스터 로드맵
 
 > Provider 결과 경계 업데이트(2026-08-26): DohaVocal `0.2.0` payload consumer, 전용 PayloadLocator persistence와 verified durable local staging foundation을 구현했습니다. Worker/Completion/Artifact ingestion은 아직 미구현입니다.
 >
@@ -51,7 +51,7 @@ DohaMusic은 제품 서비스와 Workspace·Job Orchestrator·Mixer·최종 Expo
 |---|---|---|
 | Responsive Studio MVP | [완료] | 생성·가사·음성·History·Project·Result·Settings와 Player·Cancel·Retry 구현; `/studio` 생성, `/projects` Project 관리, `/projects?mode=daw` DAW Project 선택과 `/projects/{id}` 편집 역할 구분 |
 | AI-native DAW Product Direction | [완료] | PR #94가 `develop`에 병합되어 CURRENT/TARGET/NOT IMPLEMENTED 기준 확정 |
-| Composition Runtime UI | [진행 중] | D1·D2와 D3 WorkingComposition·Working Preview·Composition Commit·Clip Gain/Fade/Loop Backend/Frontend integration, Track/Clip editing·explicit Clip Copy·persistent Undo/Redo, exact AssetVersion-safe media source·Track/Clip Waveform 완료; multi-user recovery·Section·Mixer 미구현 |
+| Composition Runtime UI | [진행 중] | D1·D2와 D3 WorkingComposition·Working Preview·Composition Commit·Clip Gain/Fade/Loop Backend/Frontend integration, Track/Clip editing·explicit Clip Copy·persistent Undo/Redo, exact AssetVersion-safe media source·Track/Clip Waveform 완료; multi-user conflict recovery 완료; Section·Mixer 미구현 |
 | Composition Evaluation / QA | [계획] | 통합 QA Run·Report·deep-link·Re-Evaluation 미구현 |
 | Continuous Learning Hub | [계획] | Candidate review·Rights/Eligibility/Dataset 연결 미구현 |
 
@@ -124,7 +124,7 @@ Track    AI Provider 저장소 분리     [Phase A 완료 / Phase B 진행 중 /
 | 7. Doha Voice | [계획] | `░░░░░░░░░░ 0%` | Dataset·LoRA·Fine Tuning 미착수 | [Phase-07](docs/DoD/Phase-07.md) |
 | 8. Doha Studio | [완료] | `██████████ 100%` | 로컬 단일 사용자 Responsive Studio MVP의 Voice·History·Project·Audio·Cancel·Retry 완료; DAW TARGET과 분리 | [Phase-08](docs/DoD/Phase-08.md) |
 | F6. Guided Voice Enrollment | [진행 중] | 독립 체크리스트 | 구현·자동 Browser Validation 완료, 실제 사용자 마이크·실기기와 인증은 미검증 | [Validation Report](reports/validation/VALIDATION-VOICE-ENROLLMENT.md) |
-| AI-native DAW Product | [진행 중] | `D0·D1·D2·D3 WorkingComposition·Working Preview·Composition Commit·Clip Gain/Fade/Loop Backend/Frontend integration·Clip editing·Clip Copy·safe media source·Track/Clip Waveform·persistent history 완료` | Backend journal/cursor Undo/Redo·exact version media resolution·Clip source-window Waveform·revision-pinned Preview·immutable Commit·static Clip Gain/Fade와 Loop UI 완료; multi-user recovery·실제 DB 적용·Section·Mixer·QA·Learning 미구현 | [AI-native DAW DoD](docs/DoD/AI-Native-DAW.md) |
+| AI-native DAW Product | [진행 중] | `D0·D1·D2·D3 WorkingComposition·Working Preview·Composition Commit·Clip Gain/Fade/Loop Backend/Frontend integration·Clip editing·Clip Copy·safe media source·Track/Clip Waveform·persistent history 완료` | Backend journal/cursor Undo/Redo·exact version media resolution·Clip source-window Waveform·revision-pinned Preview·immutable Commit·static Clip Gain/Fade와 Loop UI 완료; multi-user conflict recovery 완료; 실제 DB 적용·Section·Mixer·QA·Learning 미구현 | [AI-native DAW DoD](docs/DoD/AI-Native-DAW.md) |
 | K0~K4. K-POP Creation Control | [진행 중] | `K0·K1·K2·K3.0·K3.1·K3.2·K3.3 완료 / K3.4~K4 계획` | Structured Options와 final WAV Quality Metrics·LUFS·Tempo·Hook 후보 후처리 완료 | [K-POP Roadmap](planning/kpop-creation-roadmap.md) |
 | Workspace Artifact·Job Domain | [진행 중] | 독립 체크리스트 | Job Service·Completion UoW·Worker 실행 기반·공식 API 5/5, 4개 Vocal Job 계약, Provider Job 1:N persistence와 metadata Result trust gate 구현, reconciliation 계약 확정; Provider dispatch wiring·durable payload ingestion·background daemon 미구현 | [Workspace Job Foundation](docs/03-architecture/workspace-job-foundation.md) |
 | 9. Production | [계획] | `░░░░░░░░░░ 0%` | 운영 인프라·보안 승인 미착수 | [Phase-09](docs/DoD/Phase-09.md) |
@@ -358,7 +358,9 @@ Persistent History Authority / Foundation [완료]
 
 Persistent History Frontend Integration [완료]
 
-Multi-user 동시 편집 recovery [다음]
+Multi-user 동시 편집 recovery [완료]
+
+Mixer와 Export Authority [다음]
 ```
 
 이 순서는 기존 Phase·품질 평가·Provider 분리 Track을 취소하지 않는다. D1-B와 WorkingComposition persistence·Service·Product API·safe media resolution·Preview·Clip Gain/Fade/Loop·persistent history Backend/Frontend 완료는 source·격리 fixture 기준이며 실제 사용자 DB `0017 → 0028` 적용을 뜻하지 않는다.

@@ -581,6 +581,91 @@ describe("WorkingComposition editor", () => {
     expect(screen.getByLabelText("Fade Out exact value")).toHaveValue(1.25);
   });
 
+  it("newer recovery wins when older workspace and history responses resolve last", async () => {
+    const initial = { ...working, revision: 10 };
+    const recoveryAWorkspace = { ...working, revision: 11, tracks: [{ ...working.tracks[0], name: "Recovery A" }] };
+    const recoveryBWorkspace = {
+      ...working,
+      revision: 12,
+      tracks: [{ ...working.tracks[0], name: "Recovery B" }],
+      clips: [],
+      timeline_duration: "0",
+    };
+    const recoveryAHistory = {
+      working_composition_id: "working-1", revision: 11, cursor: 0, command_count: 1,
+      can_undo: false, can_redo: true,
+    };
+    const recoveryBHistory = {
+      working_composition_id: "working-1", revision: 12, cursor: 1, command_count: 1,
+      can_undo: true, can_redo: false,
+    };
+    let resolveAWorkspace!: (value: WorkingCompositionDto) => void;
+    const aWorkspace = new Promise<WorkingCompositionDto>((resolve) => { resolveAWorkspace = resolve; });
+    let resolveAHistory!: (value: typeof recoveryAHistory) => void;
+    const aHistory = new Promise<typeof recoveryAHistory>((resolve) => { resolveAHistory = resolve; });
+    vi.spyOn(dohaApi, "getWorkingComposition")
+      .mockResolvedValueOnce(initial)
+      .mockImplementationOnce(() => aWorkspace)
+      .mockResolvedValueOnce(recoveryBWorkspace);
+    vi.mocked(dohaApi.getWorkingCompositionHistory)
+      .mockResolvedValueOnce(historyBoth(10))
+      .mockResolvedValueOnce(recoveryBHistory)
+      .mockImplementationOnce(() => aHistory);
+    vi.spyOn(dohaApi, "updateWorkingClipGain")
+      .mockRejectedValueOnce(new ApiError(409, "WORKING_COMPOSITION_REVISION_CONFLICT", "stale A"));
+    vi.spyOn(dohaApi, "createWorkingPreview")
+      .mockRejectedValueOnce(new ApiError(409, "WORKING_COMPOSITION_REVISION_CONFLICT", "stale B"));
+    const user = userEvent.setup();
+    const { client } = renderEditor();
+    await user.click(await screen.findByRole("button", { name: /Clip clip-1 선택 및 이동/ }));
+    const gain = screen.getByLabelText("Clip gain exact value");
+    await user.clear(gain);
+    await user.type(gain, "3");
+    fireEvent.blur(gain);
+    expect(await screen.findByText("다른 편집자의 변경을 반영하는 중입니다.")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Working Preview 만들기" }));
+    expect(await screen.findByText(/revision 12/)).toBeVisible();
+    expect(screen.getByLabelText("Recovery B Track 이름")).toBeVisible();
+    expect(screen.queryByLabelText("선택 Clip 편집")).not.toBeInTheDocument();
+    expect(client.getQueryData(["working-composition-history", "project-1", "working-1"]))
+      .toEqual(recoveryBHistory);
+
+    await act(async () => { resolveAWorkspace(recoveryAWorkspace); });
+    await waitFor(() => expect(dohaApi.getWorkingCompositionHistory).toHaveBeenCalledTimes(3));
+    await act(async () => { resolveAHistory(recoveryAHistory); });
+
+    await waitFor(() => expect(screen.queryByText("다른 편집자의 변경을 반영하는 중입니다.")).not.toBeInTheDocument());
+    expect(screen.getByText(/revision 12/)).toBeVisible();
+    expect(screen.getByLabelText("Recovery B Track 이름")).toBeVisible();
+    expect(screen.queryByLabelText("Recovery A Track 이름")).not.toBeInTheDocument();
+    expect(screen.queryByText("다른 변경으로 revision이 달라졌습니다.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "편집 실행 취소" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "편집 다시 실행" })).toBeDisabled();
+    expect(screen.queryByLabelText("선택 Clip 편집")).not.toBeInTheDocument();
+  });
+  it("multi-user conflict recovery는 deleted selection을 clear하고 stale intent를 retry하지 않는다", async () => {
+    const external = { ...working, revision: 7, clips: [] };
+    vi.mocked(dohaApi.getWorkingCompositionHistory)
+      .mockResolvedValueOnce(historyBoth())
+      .mockResolvedValueOnce(historyBarrier(7));
+    vi.spyOn(dohaApi, "getWorkingComposition")
+      .mockResolvedValueOnce(working)
+      .mockResolvedValueOnce(external);
+    const update = vi.spyOn(dohaApi, "updateWorkingClipGain")
+      .mockRejectedValueOnce(new ApiError(409, "WORKING_COMPOSITION_REVISION_CONFLICT", "stale"));
+    const user = userEvent.setup();
+    renderEditor();
+    await user.click(await screen.findByRole("button", { name: /Clip clip-1 선택 및 이동/ }));
+    const input = screen.getByLabelText("Clip gain exact value");
+    await user.clear(input);
+    await user.type(input, "3");
+    fireEvent.blur(input);
+    expect(await screen.findByText(/다른 편집자의 변경을 감지해/)).toBeVisible();
+    expect(screen.queryByLabelText("선택 Clip 편집")).not.toBeInTheDocument();
+    expect(screen.getByText(/revision 7/)).toBeVisible();
+    expect(update).toHaveBeenCalledTimes(1);
+  });
   it("revision conflict는 GET reconcile하고 Undo/Redo 버튼을 비운다", async () => {
     const renamed = { ...working, revision: 3, tracks: [{ ...working.tracks[0], name: "Renamed" }] };
     const external = { ...renamed, revision: 7, tracks: [{ ...working.tracks[0], name: "External" }] };
