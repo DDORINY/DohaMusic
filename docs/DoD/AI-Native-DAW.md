@@ -101,7 +101,7 @@
 - [x] WAV·FLAC·trusted MP3 trim·offset·gap·cross-Track overlap FFmpeg renderer와 bounded cleanup
 - [x] Working Preview Frontend action·Job polling·stale 표시·Global Player integration
 - [x] single-user persistent history journal/cursor·reload recovery
-- [ ] multi-user 동시 편집 recovery
+- [x] aggregate revision fail-closed와 canonical WorkingComposition/history refetch 기반 multi-user 동시 편집 recovery
 
 ## D4. Mixer와 Export — [계획]
 

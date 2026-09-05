@@ -1,4 +1,4 @@
-﻿# 아키텍처 결정 기록
+# 아키텍처 결정 기록
 
 > 문서 목적: 중요한 결정과 근거, 재검토 조건을 추적한다.
 > 현재 상태: **운영 중**
@@ -59,6 +59,8 @@
 | [ADR-053](ADR-053-clip-gain-authority.md) | Clip별 static Gain, split inverse·Preview DSP·Commit freeze 계약 | 승인, Backend foundation 구현 |
 | [ADR-054](ADR-054-clip-fade-authority.md) | Clip-relative linear Fade, geometry·inverse identity·Preview DSP·Commit freeze 계약 | 승인, Backend foundation 구현 |
 | [ADR-055](ADR-055-clip-timeline-duration-and-loop-phase-authority.md) | Clip timeline duration과 source-loop phase의 독립 canonical geometry | 승인, 구현 대기 |
+| [ADR-056](ADR-056-persistent-working-composition-history.md) | WorkingComposition persistent history journal/cursor와 Backend Undo/Redo authority | 승인 |
+| [ADR-057](ADR-057-working-composition-multi-user-conflict-recovery-authority.md) | aggregate revision CAS와 canonical refetch 기반 multi-user conflict recovery | 승인 |
 
 결정 변경 시 기존 문서를 삭제하지 않고 상태와 대체 ADR 링크를 갱신한다.
 
@@ -87,6 +89,8 @@
 - [ADR-040 — Canonical Track·Clip과 Working Composition 권위](ADR-040-canonical-track-clip-working-composition-authority.md): Project당 하나의 mutable WorkingComposition, canonical Track·Clip identity, exact AssetVersion, revision·atomic edit와 별도 불변 Snapshot Track/Clip commit 경계를 결정한다.
 - [ADR-054 — Clip Fade Authority](ADR-054-clip-fade-authority.md): Clip-relative microsecond Fade, fixed linear curve, fail-closed geometry와 Snapshot·Preview 재현 계약을 승인한다.
 - [ADR-055 — Clip Timeline Duration and Loop Phase Authority](ADR-055-clip-timeline-duration-and-loop-phase-authority.md): source window와 timeline extent를 분리하고 split·trim continuity를 보존하는 explicit phase를 승인한다.
+- [ADR-056 — Persistent WorkingComposition History](ADR-056-persistent-working-composition-history.md): Backend journal/cursor를 canonical Undo/Redo authority로 승인한다.
+- [ADR-057 — WorkingComposition Multi-user Conflict Recovery Authority](ADR-057-working-composition-multi-user-conflict-recovery-authority.md): stale aggregate mutation을 fail-closed하고 generation-guarded workspace/history refetch로 복구한다.
 - [ADR-047 — Revision-safe Idempotency Completion Result 권위](ADR-047-revision-safe-idempotency-completion-result.md): 기존 resource replay를 보존하면서 완료 revision과 operation별 복수 identity를 bounded versioned JSON으로 원자 저장한다.
 - [ADR-045 — Clip Service 삭제 의미와 신뢰된 미디어 길이 권위](ADR-045-clip-service-deletion-media-duration-authority.md): non-empty Track 삭제 거부와 trusted ingestion이 저장한 exact duration, exact-one Artifact fail-closed 경계를 결정한다.
 - [ADR-050 — WorkingComposition Inverse Mutation 권위](ADR-050-working-composition-inverse-mutation-authority.md): same-ID Track/Clip restore, exact split geometry 기반 unsplit/resplit과 Frontend history boundary를 결정한다.

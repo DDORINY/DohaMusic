@@ -1,6 +1,6 @@
 # AI-native DAW Frontend 전환 계획
 
-> 2026-09-06 상태: Persistent History Authority / Foundation과 Frontend Integration을 완료했다. Frontend는 Backend history projection과 undo/redo intent를 소비하며 persisted journal/cursor와 canonical WorkingComposition을 reconcile한다. Loop nonzero phase도 Frontend의 직접 restore 호출 없이 Backend history authority가 복원한다. 다음 D3 권위는 multi-user 동시 편집 recovery다.
+> 2026-09-06 상태: Persistent History Authority / Foundation과 Frontend Integration을 완료했다. Frontend는 Backend history projection과 undo/redo intent를 소비하며 persisted journal/cursor와 canonical WorkingComposition을 reconcile한다. Loop nonzero phase도 Frontend의 직접 restore 호출 없이 Backend history authority가 복원한다. multi-user 동시 편집 recovery도 aggregate revision fail-closed와 canonical workspace/history refetch로 완료했다.
 
 > 문서 상태: [진행 중]
 > 최종 수정일: 2026-09-06
@@ -164,4 +164,4 @@ Gate 미충족 시 DohaLM Frontend는 독립 개발/Runtime 검증용으로 유�
 
 ## 6. NOT IMPLEMENTED
 
-D1 Composition Read와 D2 Timeline Playback Foundation의 Frontend Runtime, 읽기 전용 Master / Mix Waveform·richer Playhead와 D3 Track/Clip 편집·explicit Clip Copy·Backend persistent Undo/Redo·source-window Waveform·Working Preview·Composition Commit·Clip Gain/Fade/Loop Backend/Frontend integration은 구현돼 있다. multi-user recovery, Section·Mixer·AI editing과 D4~D9 잔여 Runtime은 미구현이다. 기존 F0~F5 완료와 F6 진행 상태는 변경하지 않는다.
+D1 Composition Read와 D2 Timeline Playback Foundation의 Frontend Runtime, 읽기 전용 Master / Mix Waveform·richer Playhead와 D3 Track/Clip 편집·explicit Clip Copy·Backend persistent Undo/Redo·source-window Waveform·Working Preview·Composition Commit·Clip Gain/Fade/Loop Backend/Frontend integration은 구현돼 있다. Section·Mixer·AI editing과 D4~D9 잔여 Runtime은 미구현이다. 기존 F0~F5 완료와 F6 진행 상태는 변경하지 않는다.

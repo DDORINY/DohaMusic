@@ -581,6 +581,28 @@ describe("WorkingComposition editor", () => {
     expect(screen.getByLabelText("Fade Out exact value")).toHaveValue(1.25);
   });
 
+  it("multi-user conflict recovery는 deleted selection을 clear하고 stale intent를 retry하지 않는다", async () => {
+    const external = { ...working, revision: 7, clips: [] };
+    vi.mocked(dohaApi.getWorkingCompositionHistory)
+      .mockResolvedValueOnce(historyBoth())
+      .mockResolvedValueOnce(historyBarrier(7));
+    vi.spyOn(dohaApi, "getWorkingComposition")
+      .mockResolvedValueOnce(working)
+      .mockResolvedValueOnce(external);
+    const update = vi.spyOn(dohaApi, "updateWorkingClipGain")
+      .mockRejectedValueOnce(new ApiError(409, "WORKING_COMPOSITION_REVISION_CONFLICT", "stale"));
+    const user = userEvent.setup();
+    renderEditor();
+    await user.click(await screen.findByRole("button", { name: /Clip clip-1 선택 및 이동/ }));
+    const input = screen.getByLabelText("Clip gain exact value");
+    await user.clear(input);
+    await user.type(input, "3");
+    fireEvent.blur(input);
+    expect(await screen.findByText(/다른 편집자의 변경을 감지해/)).toBeVisible();
+    expect(screen.queryByLabelText("선택 Clip 편집")).not.toBeInTheDocument();
+    expect(screen.getByText(/revision 7/)).toBeVisible();
+    expect(update).toHaveBeenCalledTimes(1);
+  });
   it("revision conflict는 GET reconcile하고 Undo/Redo 버튼을 비운다", async () => {
     const renamed = { ...working, revision: 3, tracks: [{ ...working.tracks[0], name: "Renamed" }] };
     const external = { ...renamed, revision: 7, tracks: [{ ...working.tracks[0], name: "External" }] };

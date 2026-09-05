@@ -65,6 +65,7 @@ function WorkingCompositionEditorSession({
 }) {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
+  const [recoveryState, setRecoveryState] = useState<"idle" | "conflict_recovering" | "ready">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -79,6 +80,8 @@ function WorkingCompositionEditorSession({
   const [draggedTrackId, setDraggedTrackId] = useState<string | null>(null);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(DEFAULT_PIXELS_PER_SECOND);
   const playhead = usePlayerStore((state) => state.currentTime);
+  const recoveryGeneration = useRef(0);
+  useEffect(() => () => { recoveryGeneration.current += 1; }, []);
   const queryKey = useMemo(() => ["working-composition", projectId] as const, [projectId]);
   const working = useQuery({
     queryKey,
@@ -99,15 +102,28 @@ function WorkingCompositionEditorSession({
     retry: false,
   });
 
-  const reconcile = useCallback(async () => {
-    const canonical = await dohaApi.getWorkingComposition(projectId);
-    queryClient.setQueryData(queryKey, canonical);
-    const canonicalHistory = await dohaApi.getWorkingCompositionHistory(projectId, canonical.working_composition_id);
-    queryClient.setQueryData(
-      ["working-composition-history", projectId, canonical.working_composition_id],
-      canonicalHistory,
-    );
-    return canonical;
+  const reconcile = useCallback(async (conflictRecovery = false) => {
+    const generation = ++recoveryGeneration.current;
+    if (conflictRecovery) setRecoveryState("conflict_recovering");
+    try {
+      const canonical = await dohaApi.getWorkingComposition(projectId);
+      const canonicalHistory = await dohaApi.getWorkingCompositionHistory(
+        projectId,
+        canonical.working_composition_id,
+      );
+      if (generation !== recoveryGeneration.current) return null;
+      queryClient.setQueryData(queryKey, canonical);
+      queryClient.setQueryData(
+        ["working-composition-history", projectId, canonical.working_composition_id],
+        canonicalHistory,
+      );
+      setSelectedClipId((current) => (
+        current && canonical.clips.some((clip) => clip.clip_id === current) ? current : null
+      ));
+      return canonical;
+    } finally {
+      if (conflictRecovery && generation === recoveryGeneration.current) setRecoveryState("ready");
+    }
   }, [projectId, queryClient, queryKey]);
 
   const fail = useCallback(async (cause: unknown, preserveHistory = false) => {
@@ -118,8 +134,8 @@ function WorkingCompositionEditorSession({
       || apiError?.code === "NETWORK_ERROR"
       || apiError?.code === "REQUEST_TIMEOUT") {
       try {
-        await reconcile();
-        setMessage("서버의 최신 편집 상태와 Undo/Redo 기록을 불러왔습니다.");
+        await reconcile(true);
+        setMessage("다른 편집자의 변경을 감지해 서버의 최신 편집 상태와 Undo/Redo 기록을 불러왔습니다. 변경 내용을 확인한 뒤 다시 적용해 주세요.");
       } catch {
         // The original structured error remains the useful failure.
       }
@@ -326,6 +342,9 @@ function WorkingCompositionEditorSession({
           )}>현재 Snapshot Checkout</Button>
         </div>
       </header>
+      {recoveryState === "conflict_recovering" && (
+        <p className="working-editor-notice" role="status">다른 편집자의 변경을 반영하는 중입니다.</p>
+      )}
       {message && <p className="working-editor-notice" role="status">{message}</p>}
       {error && <ErrorAlert title="편집을 적용하지 못했습니다." message={error} />}
       {data.clips.length === 0 && (
