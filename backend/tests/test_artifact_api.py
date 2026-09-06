@@ -517,7 +517,7 @@ def test_openapi_registers_three_unique_artifact_operations(
         for operation in methods.values()
         if isinstance(operation, dict) and "operationId" in operation
     ]
-    assert len(operation_ids) - len(set(operation_ids)) == 2
+    assert len(operation_ids) == len(set(operation_ids))
 
 
 def test_artifact_api_does_not_mutate_schema_or_resource_rows(

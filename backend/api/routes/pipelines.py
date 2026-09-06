@@ -63,9 +63,14 @@ def list_pipeline_files(job_id: str, service: ServiceDependency) -> list[Pipelin
     return [PipelineFileRead.model_validate(item) for item in service.list_files(job_id)]
 
 
-@router.api_route(
+@router.get(
     "/{job_id}/files/{file_id}/content",
-    methods=["GET", "HEAD"],
+    operation_id="get_pipeline_file_content",
+    response_class=FileResponse,
+)
+@router.head(
+    "/{job_id}/files/{file_id}/content",
+    operation_id="head_pipeline_file_content",
     response_class=FileResponse,
 )
 def get_pipeline_file_content(
@@ -90,9 +95,14 @@ def get_pipeline_file_content(
     )
 
 
-@router.api_route(
+@router.get(
     "/{job_id}/files/{file_id}/download",
-    methods=["GET", "HEAD"],
+    operation_id="download_pipeline_file",
+    response_class=FileResponse,
+)
+@router.head(
+    "/{job_id}/files/{file_id}/download",
+    operation_id="head_download_pipeline_file",
     response_class=FileResponse,
 )
 def download_pipeline_file(

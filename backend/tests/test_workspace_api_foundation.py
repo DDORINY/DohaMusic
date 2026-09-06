@@ -206,8 +206,8 @@ def test_v1_router_adds_first_resources_and_runtime_route_count_is_stable() -> N
         operation_id for operation_id, count in Counter(operation_ids).items() if count > 1
     }
 
-    assert len(registered_routes) == 105
-    assert len(api_routes) == 101
+    assert len(registered_routes) == 107
+    assert len(api_routes) == 103
     assert len(openapi_paths) == 82
     assert len(operation_ids) == 103
     assert (
@@ -340,12 +340,4 @@ def test_v1_router_adds_first_resources_and_runtime_route_count_is_stable() -> N
     assert len({item["operationId"] for item in v1_operations.values()}) == 60
     assert all(item.get("summary") for item in v1_operations.values())
     assert all(item.get("tags") for item in v1_operations.values())
-    assert len(duplicate_ids) == 2
-    assert {operation_id.rsplit("_", 1)[0] for operation_id in duplicate_ids} == {
-        "download_pipeline_file_api_pipelines__job_id__files__file_id__download",
-        "get_pipeline_file_content_api_pipelines__job_id__files__file_id__content",
-    }
-    assert {operation_id.rsplit("_", 1)[1] for operation_id in duplicate_ids} <= {
-        "get",
-        "head",
-    }
+    assert duplicate_ids == set()
