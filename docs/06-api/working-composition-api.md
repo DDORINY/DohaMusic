@@ -110,7 +110,7 @@ Job 생성은 현재 source eligibility를 재검증해 >16개도 손실 없이 
 
 ## Surface 실측
 
-WorkingComposition Router는 APIRoute 24개, OpenAPI Path 23개, Operation 24개이며 operation ID 중복은 0개다. 전체 application 실측은 최종 OpenAPI Gate 결과를 따른다. 기존 Legacy Pipeline의 GET/HEAD 병합 route 두 곳에서 발생하던 global duplicate operation ID warning 2종은 이 작업 범위에서 변경하지 않았으며 새 Loop restore operation ID 충돌은 0개다.
+WorkingComposition Router는 APIRoute 24개, OpenAPI Path 23개, Operation 24개이며 operation ID 중복은 0개다. 전체 application은 Route 107개, APIRoute 103개, OpenAPI Path 82개, Operation 103개이며 global operation ID 중복은 0개다. Legacy Pipeline의 GET/HEAD route는 공개 path와 method를 유지하면서 method별 명시 operation ID를 사용한다.
 
 이 22개는 Product API이므로 Workspace Resource Endpoint 30/64 분모에는 포함하지 않는다.
 
