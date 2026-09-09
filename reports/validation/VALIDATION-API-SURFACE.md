@@ -31,6 +31,8 @@
 
 SHA-256: `81b398c306b03a75d8a8b82469712c10668740c180ee27ed9687e76b7a24ffe4`
 
+PR #152는 Legacy Pipeline content/download의 GET·HEAD operation ID를 method별로 분리하여 공개 method/path semantics 변경 없이 기존 중복 2건을 제거했다. Foundation은 이 정리된 contract 위에 Mixer mutation 2개를 추가한다.
+
 정규화 입력은 path, HTTP method, operation ID, request parameter 이름·위치·필수성·schema, JSON request body schema와 2xx response status/schema다. timestamp와 등록 순서는 포함하지 않는다.
 
 ## 자동 Gate
