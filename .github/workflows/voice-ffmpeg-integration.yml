@@ -3,18 +3,8 @@ name: Voice FFmpeg integration
 on:
   pull_request:
     branches: [develop]
-    paths:
-      - ".github/workflows/voice-ffmpeg-integration.yml"
-      - "ai_worker/**"
-      - "backend/**"
-      - "pyproject.toml"
   push:
     branches: [develop]
-    paths:
-      - ".github/workflows/voice-ffmpeg-integration.yml"
-      - "ai_worker/**"
-      - "backend/**"
-      - "pyproject.toml"
 
 permissions:
   contents: read
@@ -63,3 +53,45 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Windows FFmpeg integration
         run: python -m pytest -q backend/tests/test_voice_enrollment_audio.py -m integration
+
+  frontend-playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+      - name: Install Backend
+        run: python -m pip install -e ".[dev]"
+      - name: Install Frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Configured-parallel Playwright
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Full-stack Export Playwright
+        working-directory: frontend
+        env:
+          DOHA_E2E_PYTHON: python
+          DOHA_E2E_RUNTIME_ROOT: ${{ runner.temp }}/dohamusic-fullstack-export
+          DOHA_E2E_ALLOWED_PARENT: ${{ runner.temp }}
+          DOHA_E2E_SEED_FILE: ${{ runner.temp }}/dohamusic-fullstack-export-seed.json
+        run: npm run test:e2e -- --config playwright.export.config.ts
