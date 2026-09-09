@@ -27,6 +27,7 @@ from backend.models.workspace import (
     CompositionTrack,
     MusicProject,
     ProcessingChain,
+    ProjectAsset,
     SnapshotItem,
     WorkingComposition,
     Workspace,
@@ -51,6 +52,7 @@ def session_factory(tmp_path: Path):
         tables=[
             Workspace.__table__,
             MusicProject.__table__,
+            ProjectAsset.__table__,
             ProcessingChain.__table__,
             Asset.__table__,
             AssetVersion.__table__,

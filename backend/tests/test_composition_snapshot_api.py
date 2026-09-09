@@ -674,12 +674,9 @@ def test_snapshot_routes_are_immutable_and_openapi_is_exact(client: TestClient) 
     assert schema["paths"][loop_restore_path]["post"]["operationId"] == (
         "restore_working_composition_clip_loop_state"
     )
-    assert len(schema["paths"]) == 82
-    assert len(operation_ids) == 103
-    assert {operation_id.rsplit("_", maxsplit=1)[0] for operation_id in duplicates} == {
-        "get_pipeline_file_content_api_pipelines__job_id__files__file_id__content",
-        "download_pipeline_file_api_pipelines__job_id__files__file_id__download",
-    }
+    assert len(schema["paths"]) == 84
+    assert len(operation_ids) == 105
+    assert duplicates == set()
     assert {
         "list_composition_snapshots",
         "create_composition_snapshot",

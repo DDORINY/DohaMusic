@@ -337,6 +337,10 @@ export interface WorkingTrackDto {
   track_type: string;
   name: string;
   track_order: number;
+  gain_db?: string;
+  pan?: string;
+  muted?: boolean;
+  solo?: boolean;
 }
 
 export interface WorkingClipDto {
@@ -371,6 +375,7 @@ export interface WorkingCompositionDto {
   project_id: string;
   base_composition_snapshot_id: string | null;
   revision: number;
+  master_gain_db?: string;
   mix_settings: Record<string, unknown>;
   tracks: WorkingTrackDto[];
   clips: WorkingClipDto[];
@@ -487,4 +492,12 @@ export interface WorkspaceJobDetailDto {
   error_message: string | null;
   error_retryable: boolean | null;
   error_details_id: string | null;
+}
+
+export interface WorkspaceExportJobCreateDto {
+  project_id: string;
+  job_type: "export";
+  composition_snapshot_id: string;
+  inputs: [];
+  settings_snapshot: { format: "wav" };
 }

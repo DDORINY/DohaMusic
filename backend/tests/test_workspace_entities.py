@@ -35,6 +35,8 @@ EXPECTED_ENTITY_TABLES = {
     "Job": "jobs",
     "JobInput": "job_inputs",
     "JobOutput": "job_outputs",
+    "JobExportResult": "job_export_results",
+    "JobExportPublication": "job_export_publications",
     "ProcessingChain": "processing_chains",
     "ProcessingStep": "processing_steps",
     "ModelUsage": "model_usages",
@@ -67,6 +69,7 @@ EXPECTED_COLUMNS = {
         "workspace_id",
         "title",
         "description",
+        "export_project_asset_id",
         "lifecycle_status",
         "created_by",
         "created_at",
@@ -136,6 +139,7 @@ EXPECTED_COLUMNS = {
         "snapshot_version",
         "processing_chain_id",
         "mix_settings_snapshot",
+        "master_gain_db",
         "provider_versions",
         "model_manifest_ids",
         "created_by",
@@ -146,6 +150,7 @@ EXPECTED_COLUMNS = {
         "project_id",
         "base_composition_snapshot_id",
         "mix_settings",
+        "master_gain_db",
         "revision",
         "created_at",
         "updated_at",
@@ -156,6 +161,10 @@ EXPECTED_COLUMNS = {
         "track_type",
         "name",
         "track_order",
+        "gain_db",
+        "pan",
+        "muted",
+        "solo",
         "created_at",
         "updated_at",
         "deleted_at",
@@ -435,6 +444,44 @@ EXPECTED_COLUMNS = {
     },
 }
 
+EXPECTED_COLUMNS["composition_snapshot_tracks"].update({"gain_db", "pan", "muted", "solo"})
+EXPECTED_COLUMNS["working_preview_render_tracks"].update({"gain_db", "pan", "muted", "solo"})
+EXPECTED_COLUMNS["working_preview_renders"].add("master_gain_db")
+EXPECTED_COLUMNS["job_export_results"] = {
+    "job_id",
+    "composition_snapshot_id",
+    "export_format",
+    "render_fingerprint",
+    "exported_asset_version_id",
+    "exported_artifact_id",
+    "integrated_loudness_lufs",
+    "true_peak_dbtp",
+    "target_lufs",
+    "minimum_lufs",
+    "maximum_lufs",
+    "maximum_true_peak_dbtp",
+    "loudness_passed",
+    "true_peak_passed",
+    "overall_pass",
+    "analyzer_name",
+    "analyzer_version",
+    "created_at",
+}
+EXPECTED_COLUMNS["job_export_publications"] = {
+    "job_id",
+    "composition_snapshot_id",
+    "export_format",
+    "storage_domain",
+    "storage_key",
+    "state",
+    "expected_sha256",
+    "expected_size_bytes",
+    "artifact_id",
+    "version",
+    "created_at",
+    "updated_at",
+}
+
 LEGACY_TABLES = {
     "generated_files",
     "generation_jobs",
@@ -456,9 +503,9 @@ LEGACY_TABLES = {
 def test_workspace_entity_and_table_names_are_exact() -> None:
     actual = {entity.__name__: entity.__tablename__ for entity in WORKSPACE_ENTITY_CLASSES}
 
-    assert len(WORKSPACE_ENTITY_CLASSES) == 33
+    assert len(WORKSPACE_ENTITY_CLASSES) == 35
     assert actual == EXPECTED_ENTITY_TABLES
-    assert len(set(actual.values())) == 33
+    assert len(set(actual.values())) == 35
 
 
 def test_workspace_table_columns_match_documented_contract() -> None:
@@ -505,7 +552,7 @@ def test_workspace_metadata_coexists_with_legacy_tables() -> None:
     assert set(Base.metadata.tables) == (
         target_tables | storage_tables | LEGACY_TABLES | history_tables
     )
-    assert len(Base.metadata.tables) == 50
+    assert len(Base.metadata.tables) == 52
 
 
 def test_workspace_foreign_keys_resolve_and_relationships_are_symmetric() -> None:

@@ -3,7 +3,7 @@
 > 문서 상태: [진행 중]
 > 최종 수정일: 2026-08-10
 > 관련 기능: 현행 기능별 API에서 Workspace v1 API로 단계적 전환
-> 구현 상태: `/api/v1` 공통 기반·명시적 Bootstrap 도구·HMAC Cursor와 Resource Endpoint 25개, CompositionSnapshot API 3개 구현; 나머지 Endpoint·Adapter·Redirect·OpenAPI 파일 미구현
+> 구현 상태: `/api/v1` 공통 기반·명시적 Bootstrap 도구·HMAC Cursor와 Resource Endpoint 30개 구현; 나머지 Endpoint·Adapter·Redirect·정적 OpenAPI 파일 미구현
 > 관련 문서: [API 기반·Bootstrap](workspace-api-foundation-bootstrap.md), [현재 API 개요](api-overview.md), [목표 공통 계약](workspace-rest-api-contract.md), [목표 Endpoint 목록](workspace-rest-api-endpoints.md), [DB 전환 전략](../07-database/database-redesign-migration-strategy.md)
 
 ## 1. 현재와 목표

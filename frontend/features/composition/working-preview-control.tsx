@@ -31,12 +31,14 @@ export function WorkingPreviewControl({
   workingCompositionId,
   currentRevision,
   clipCount,
+  disabled = false,
   onRevisionConflict,
 }: {
   projectId: string;
   workingCompositionId: string;
   currentRevision: number;
   clipCount: number;
+  disabled?: boolean;
   onRevisionConflict: () => Promise<void>;
 }) {
   const requestGeneration = useRef(0);
@@ -129,7 +131,7 @@ export function WorkingPreviewControl({
             ? "ready"
             : (job.data?.status ?? request?.phase ?? "idle");
   const requestPending = submitting || requestInProgress;
-  const canCreate = clipCount > 0 && !requestPending;
+  const canCreate = clipCount > 0 && !requestPending && !disabled;
 
   return (
     <section className="working-preview" aria-labelledby="working-preview-title">
@@ -144,6 +146,7 @@ export function WorkingPreviewControl({
         <span>{previewStatusDescription(phase, request?.renderedRevision)}</span>
       </div>
       {clipCount === 0 && <p className="working-preview-help">활성 Clip을 배치하면 Preview를 만들 수 있습니다.</p>}
+      {disabled && <p className="working-preview-help" role="status">Mixer 변경을 저장한 뒤 Preview를 만들 수 있습니다.</p>}
       {stale && <p className="working-preview-stale" role="status"><strong>Preview가 최신 편집본과 다릅니다.</strong><span>Preview 이후 변경 사항이 있습니다. 다시 만들어 확인해 주세요.</span></p>}
       {(requestError || outputInvalid || job.data?.status === "failed") && <p className="working-preview-error" role="alert">{requestError ?? workingPreviewErrorMessage(outputInvalid ? "WORKING_PREVIEW_OUTPUT_INVALID" : job.data?.error_code)}</p>}
       {job.error && requestPending && <p className="working-preview-error" role="alert">Preview 상태 확인이 지연되고 있습니다. 상태 새로고침을 사용해 주세요.</p>}

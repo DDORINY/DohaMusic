@@ -5,6 +5,10 @@
 
 기본 prefix는 `/api`다. 현재 인증과 사용자 소유권 검사는 구현하지 않았다. OpenAPI 문서는 서버 실행 후 `/docs`, 스키마는 `/openapi.json`에서 확인할 수 있다.
 
+## 현재 Runtime API Surface
+
+`2026-09-06` 기준 실제 FastAPI application import와 OpenAPI 생성 결과는 Route 107개, APIRoute 103개, OpenAPI Path 82개, Operation 103개다. 공개 operation은 GET 40개, POST 39개, PATCH 13개, DELETE 9개, HEAD 2개이며 operation ID와 `(method, path)` 중복은 각각 0개다. 이 수치와 request/response 핵심 계약은 전역 API surface regression Gate가 검증한다. 상세 측정 방법과 fingerprint는 [API Surface 검증](../../reports/validation/VALIDATION-API-SURFACE.md)을 따른다.
+
 ## Workspace v1 목표 계약 — [진행 중]
 
 DohaStudio Common Specification과 Asset 중심 DB Redesign을 기준으로 `/api/v1` Workspace REST API를 별도로 설계했다. 공통 기반과 Workspace Resource Endpoint 30개를 구현했다. Workspace Job은 Aggregate·상태·입출력 role·Provider·claim/lease·completion 경계, revision `20260810_0017` schema·Index, Cursor·Repository keyset, Service·Completion UoW·Worker execution foundation과 공식 Router 5개를 구현했다. Job API는 5/5다. 목표 계약은 16개 그룹·64개 Method/Path 조합이며 나머지 34개는 `[계획]`이다. Provider dispatch wiring과 background daemon·scheduler는 미구현이며 아래 Legacy API와 payload는 그대로 유지한다.

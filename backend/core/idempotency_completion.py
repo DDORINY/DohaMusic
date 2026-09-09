@@ -22,6 +22,8 @@ class IdempotencyResultType(StrEnum):
     CLIP_CREATE = "CLIP_CREATE"
     CLIP_COPY = "CLIP_COPY"
     CLIP_GAIN_UPDATE = "CLIP_GAIN_UPDATE"
+    TRACK_MIXER_UPDATE = "TRACK_MIXER_UPDATE"
+    MASTER_GAIN_UPDATE = "MASTER_GAIN_UPDATE"
     CLIP_FADE_UPDATE = "CLIP_FADE_UPDATE"
     CLIP_LOOP_UPDATE = "CLIP_LOOP_UPDATE"
     CLIP_LOOP_RESTORE = "CLIP_LOOP_RESTORE"
@@ -46,6 +48,8 @@ _RESULT_PAYLOAD_KEYS: dict[IdempotencyResultType, frozenset[str]] = {
     IdempotencyResultType.CLIP_CREATE: frozenset({"clip_id"}),
     IdempotencyResultType.CLIP_COPY: frozenset({"clip_id"}),
     IdempotencyResultType.CLIP_GAIN_UPDATE: frozenset({"clip_id"}),
+    IdempotencyResultType.TRACK_MIXER_UPDATE: frozenset({"track_id"}),
+    IdempotencyResultType.MASTER_GAIN_UPDATE: frozenset({"working_composition_id"}),
     IdempotencyResultType.CLIP_FADE_UPDATE: frozenset({"clip_id"}),
     IdempotencyResultType.CLIP_LOOP_UPDATE: frozenset({"clip_id"}),
     IdempotencyResultType.CLIP_LOOP_RESTORE: frozenset({"clip_id"}),
@@ -88,11 +92,29 @@ class IdempotencyCompletionResult:
             raise TypeError("IDEMPOTENCY_RESULT_PAYLOAD_INVALID")
 
         payload = dict(self.result_payload)
-        if set(payload) != _RESULT_PAYLOAD_KEYS[normalized_type]:
+        allowed_keys = _RESULT_PAYLOAD_KEYS[normalized_type]
+        history_keys = {
+            frozenset({"clip_id"}),
+            frozenset({"target_type", "target_id", "clip_id"}),
+            frozenset({"target_type", "target_id"}),
+        }
+        if (
+            frozenset(payload) not in history_keys
+            if normalized_type
+            in {
+                IdempotencyResultType.WORKING_HISTORY_UNDO,
+                IdempotencyResultType.WORKING_HISTORY_REDO,
+            }
+            else set(payload) != allowed_keys
+        ):
             raise ValueError("IDEMPOTENCY_RESULT_PAYLOAD_INVALID")
-        for value in payload.values():
+        for key, value in payload.items():
             if not isinstance(value, str):
                 raise TypeError("IDEMPOTENCY_RESULT_PAYLOAD_INVALID")
+            if key == "target_type":
+                if value not in {"CLIP", "TRACK", "WORKING_COMPOSITION"}:
+                    raise ValueError("IDEMPOTENCY_RESULT_PAYLOAD_INVALID")
+                continue
             try:
                 parsed = UUID(value)
             except (AttributeError, TypeError, ValueError):

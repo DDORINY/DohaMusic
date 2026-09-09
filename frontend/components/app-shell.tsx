@@ -39,12 +39,14 @@ const mobileNav = [nav[0], nav[1], nav[4], nav[5], nav[3]];
 export function AppShell({
   children,
   context,
+  variant,
 }: {
   children: ReactNode;
   context?: ReactNode;
+  variant?: "daw";
 }) {
   return (
-    <div className="app-shell">
+    <div className={`app-shell${variant === "daw" ? " app-shell-daw" : ""}`}>
       <aside className="sidebar">
         <Brand />
         <nav aria-label="주요 메뉴">

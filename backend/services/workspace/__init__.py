@@ -37,6 +37,21 @@ from backend.services.workspace.composition_service import (
     ProcessingStepInput,
     SnapshotItemInput,
 )
+from backend.services.workspace.export_job_completion_service import (
+    ExportJobCompletionError,
+    ExportJobCompletionErrorCode,
+    ExportJobCompletionRequest,
+    ExportJobCompletionResult,
+    ExportJobCompletionService,
+)
+from backend.services.workspace.export_publication_service import (
+    ExportPublicationError,
+    ExportPublicationErrorCode,
+    ExportPublicationService,
+    PublicationRecoveryResult,
+)
+from backend.services.workspace.export_worker_runner import ExportWorkerRunner
+from backend.services.workspace.export_worker_service import ExportWorkerError, ExportWorkerService
 from backend.services.workspace.job_completion_service import (
     JobCompletionError,
     JobCompletionErrorCode,
@@ -90,6 +105,14 @@ from backend.services.workspace.provider_result_ingestion_service import (
     TrustedPayloadSourceCandidate,
     TrustedProviderResultCandidate,
 )
+from backend.services.workspace.trusted_artifact_registration_service import (
+    TrustedArtifactRegistrationError,
+    TrustedArtifactRegistrationErrorCode,
+    TrustedArtifactRegistrationOutcome,
+    TrustedArtifactRegistrationRequest,
+    TrustedArtifactRegistrationResult,
+    TrustedArtifactRegistrationService,
+)
 from backend.services.workspace.trusted_media_metadata_service import (
     TrustedClipSourceMetadata,
     TrustedMediaMetadataError,
@@ -141,6 +164,18 @@ __all__ = [
     "ArtifactIngestionRequest",
     "ArtifactIngestionService",
     "ArtifactMetadata",
+    "ExportPublicationError",
+    "ExportPublicationErrorCode",
+    "ExportPublicationService",
+    "ExportWorkerError",
+    "ExportWorkerService",
+    "ExportWorkerRunner",
+    "ExportJobCompletionError",
+    "ExportJobCompletionErrorCode",
+    "ExportJobCompletionRequest",
+    "ExportJobCompletionResult",
+    "ExportJobCompletionService",
+    "PublicationRecoveryResult",
     "ArtifactReconciliationError",
     "ArtifactReconciliationIssue",
     "ArtifactReconciliationIssueType",
@@ -206,6 +241,12 @@ __all__ = [
     "ResolvedTrustedPayload",
     "SnapshotItemInput",
     "TrustedClipSourceMetadata",
+    "TrustedArtifactRegistrationError",
+    "TrustedArtifactRegistrationErrorCode",
+    "TrustedArtifactRegistrationOutcome",
+    "TrustedArtifactRegistrationRequest",
+    "TrustedArtifactRegistrationResult",
+    "TrustedArtifactRegistrationService",
     "TrustedMediaMetadataError",
     "TrustedMediaMetadataErrorCode",
     "TrustedMediaMetadataService",

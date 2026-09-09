@@ -464,6 +464,12 @@ class WorkspaceService:
             project_asset = workspace_repository.find_project_asset(project_id, asset_id)
             if project_asset is None:
                 raise ResourceNotFoundError("ProjectAsset")
+            project = workspace_repository.get_project(project_id)
+            if (
+                project is not None
+                and project.export_project_asset_id == project_asset.project_asset_id
+            ):
+                raise InvalidStateError("Project Export Asset")
             workspace_repository.remove_project_asset(project_asset)
         return project_asset
 

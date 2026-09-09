@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from backend.audio.working_preview_renderer import (
     PreviewRenderClip,
     PreviewRenderError,
+    PreviewRenderTrack,
     WorkingCompositionPreviewRenderer,
 )
 from backend.models.workspace import JobStatus
@@ -86,6 +87,16 @@ class WorkingPreviewWorkerService:
                 )
                 for item in clips
             )
+            render_tracks = tuple(
+                PreviewRenderTrack(
+                    track_order=item.track_order,
+                    gain_db=item.gain_db,
+                    pan=item.pan,
+                    muted=item.muted,
+                    solo=item.solo,
+                )
+                for item in tracks
+            )
 
         @contextmanager
         def open_artifact(artifact_id: UUID) -> Iterator:
@@ -98,6 +109,8 @@ class WorkingPreviewWorkerService:
             with self._renderer.render(
                 render_clips,
                 track_count=len(tracks),
+                tracks=render_tracks,
+                master_gain_db=render.master_gain_db,
                 cancel_requested=lambda: self._cancel_requested(job_id, claimed_by, claim_token),
                 open_artifact=open_artifact,
             ) as output:

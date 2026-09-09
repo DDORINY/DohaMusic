@@ -66,6 +66,9 @@ class CompositionSnapshot(CreatedAtMixin, Base):
         index=True,
     )
     mix_settings_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    master_gain_db: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
     provider_versions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     model_manifest_ids: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_by: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
@@ -142,6 +145,9 @@ class WorkingComposition(TimestampMixin, Base):
         Uuid(as_uuid=True), nullable=True
     )
     mix_settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    master_gain_db: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
@@ -184,6 +190,18 @@ class CompositionTrack(TimestampMixin, SoftDeleteMixin, Base):
     track_type: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     track_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    gain_db: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
+    pan: Mapped[Decimal] = mapped_column(
+        Numeric(8, 6), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
+    muted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    solo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
 
 
 class CompositionClip(TimestampMixin, SoftDeleteMixin, Base):
@@ -344,6 +362,18 @@ class CompositionSnapshotTrack(Base):
     track_type: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     track_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    gain_db: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
+    pan: Mapped[Decimal] = mapped_column(
+        Numeric(8, 6), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
+    muted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    solo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
 
 
 class CompositionSnapshotClip(Base):

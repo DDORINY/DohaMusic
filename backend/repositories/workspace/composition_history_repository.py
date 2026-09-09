@@ -44,10 +44,28 @@ class CompositionHistoryRepository:
         *,
         working_composition_id: UUID,
         command_type: str,
-        clip_id: UUID,
+        clip_id: UUID | None = None,
+        target_type: str = "CLIP",
+        target_id: UUID | None = None,
         before_state: Mapping[str, object],
         after_state: Mapping[str, object],
     ) -> None:
+        command_targets = {
+            "CLIP_GAIN": "CLIP",
+            "CLIP_FADE": "CLIP",
+            "CLIP_LOOP": "CLIP",
+            "TRACK_MIXER": "TRACK",
+            "MASTER_GAIN": "WORKING_COMPOSITION",
+        }
+        if command_targets.get(command_type) != target_type:
+            raise ValueError("WORKING_HISTORY_TARGET_INVALID")
+        resolved_target_id = target_id or clip_id
+        if resolved_target_id is None:
+            raise ValueError("WORKING_HISTORY_TARGET_INVALID")
+        if target_type == "CLIP" and clip_id != resolved_target_id:
+            raise ValueError("WORKING_HISTORY_TARGET_INVALID")
+        if target_type != "CLIP" and clip_id is not None:
+            raise ValueError("WORKING_HISTORY_TARGET_INVALID")
         state = self.state(working_composition_id)
         self.session.execute(
             delete(WorkingCompositionHistoryEntry).where(
@@ -61,6 +79,8 @@ class CompositionHistoryRepository:
                 working_composition_id=working_composition_id,
                 sequence=state.cursor,
                 command_type=command_type,
+                target_type=target_type,
+                target_id=resolved_target_id,
                 clip_id=clip_id,
                 before_state=dict(before_state),
                 after_state=dict(after_state),

@@ -40,7 +40,7 @@ class CopyBackend {
     const path = new URL(request.url()).pathname;
     const method = request.method();
     if (path === "/backend/health") return this.ok(route, { status: "ok" });
-    if (path === `/backend/api/projects/${projectId}`) return this.ok(route, project());
+    if (path === `/backend/api/v1/projects/${projectId}`) return this.ok(route, { data: { ...project(), project_id: projectId } });
     if (path === `/backend/api/v1/projects/${projectId}/composition`) {
       return this.ok(route, { data: composition() });
     }

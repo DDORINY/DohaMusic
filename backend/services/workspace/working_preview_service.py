@@ -247,7 +247,7 @@ class WorkingPreviewService:
                         model_manifest_id=None,
                         progress_percent=0,
                         stage=None,
-                        settings_snapshot={"manifest_schema": 4},
+                        settings_snapshot={"manifest_schema": 5},
                         retry_of_job_id=None,
                         requested_by=effective_owner_id,
                         attempt=0,
@@ -258,6 +258,7 @@ class WorkingPreviewService:
                         project_id=project_id,
                         working_composition_id=working.working_composition_id,
                         rendered_revision=expected_revision,
+                        master_gain_db=working.master_gain_db,
                         workspace_job_id=job.job_id,
                         preview_asset_id=preview_asset.asset_id,
                         payload_expires_at=self.clock()
@@ -270,6 +271,10 @@ class WorkingPreviewService:
                             preview_render_id=render.preview_render_id,
                             track_id=track.track_id,
                             track_order=track.track_order,
+                            gain_db=track.gain_db,
+                            pan=track.pan,
+                            muted=track.muted,
+                            solo=track.solo,
                         )
                         for track in tracks
                     ]

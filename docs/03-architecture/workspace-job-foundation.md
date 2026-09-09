@@ -1,5 +1,9 @@
 # Workspace Job Foundation 공식 계약
 
+> Export production 실행은 [ADR-065](../11-decisions/ADR-065-export-production-worker-runner.md)의
+> Export-only runner가 담당한다. Provider `JobWorkerService`와 분리된 채 기존 claim/lease CAS,
+> application lifespan startup/shutdown 및 `ExportWorkerService` completion authority를 재사용한다.
+
 > 문서 상태: [완료: 계약·Job Service·Completion UoW·Worker execution foundation·Job API 5/5·Provider Job persistence·metadata Result trust gate·Trusted Payload resolver Foundation] / [미구현: Provider dispatch wiring·downloader·Completion adapter·실제 payload ingestion·background daemon]
 > 최종 수정일: 2026-08-24
 > 관련 기능: Workspace Job, Provider Invocation, Artifact lineage와 비동기 실행 제어
@@ -53,7 +57,7 @@ Artifact ────────────┘
 | `vocal_analysis` | 선택 | `source_vocal` 필수 | `vocal_analysis` | `vocal_analysis_result` | `false` | cooperative |
 | `audio_analysis` | 선택 | `source_audio` 필수 | DohaMusic `audio_analysis` | `analysis` | `false` | 단계 경계 cooperative |
 | `mix` | 필수 | `vocal`, `instrumental` 필수, `stem` 선택 | DohaMusic `mix` | `mix` | `false` | 단계 경계 cooperative |
-| `export` | 필수 | `mix` 필수 | DohaMusic `export` | `export` | `false` | 단계 경계 cooperative |
+| `export` | 필수 | 없음 (`mix`는 legacy lineage 호환 입력으로만 허용) | DohaMusic `export` | `export` | `false` | 단계 경계 cooperative |
 | `working_preview` | 없음 | 전용 durable manifest | DohaMusic FFmpeg timeline renderer | `working_preview` exact Artifact | `true` | subprocess cooperative |
 
 `music_generation`은 prompt-only Instrumental을 지원하므로 Snapshot을 강제하지 않는다. Snapshot을 제공한 Job은 입력 role이 가리키는 Asset lineage가 Snapshot의 exact AssetVersion과 일치해야 한다. `mix`와 `export`는 최종 Workspace 조합과 설정을 재현해야 하므로 Snapshot이 필수다.

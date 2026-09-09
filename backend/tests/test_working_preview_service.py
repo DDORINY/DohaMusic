@@ -38,6 +38,7 @@ from backend.models.workspace import (
     WorkingPreviewAsset,
     WorkingPreviewRender,
     WorkingPreviewRenderClip,
+    WorkingPreviewRenderTrack,
     Workspace,
 )
 from backend.services.workspace import (
@@ -198,7 +199,7 @@ def test_create_pins_more_than_sixteen_clips_without_composition_mutation(
         assert {item.gain_db for item in clips} == {Decimal("0.00")}
         assert {(item.fade_in_us, item.fade_out_us) for item in clips} == {(0, 0)}
         job = session.get(Job, result.job_id)
-        assert job is not None and job.settings_snapshot == {"manifest_schema": 4}
+        assert job is not None and job.settings_snapshot == {"manifest_schema": 5}
         assert session.scalar(select(func.count(CompositionSnapshot.composition_snapshot_id))) == 0
 
 
@@ -253,6 +254,52 @@ def test_preview_manifest_pins_fade_without_rereading_working_clip(preview_graph
         )
         assert pinned is not None
         assert (pinned.fade_in_us, pinned.fade_out_us) == (250_001, 499_999)
+
+
+def test_preview_manifest_pins_track_and_master_mixer_state(preview_graph) -> None:
+    factory, graph, _ = preview_graph
+    with factory.begin() as session:
+        working = session.get(WorkingComposition, graph.working_id)
+        track = session.scalar(
+            select(CompositionTrack).where(
+                CompositionTrack.working_composition_id == graph.working_id
+            )
+        )
+        assert working is not None and track is not None
+        working.master_gain_db = Decimal("-3.00")
+        track.gain_db, track.pan, track.muted, track.solo = (
+            Decimal("2.00"),
+            Decimal("0.50"),
+            False,
+            True,
+        )
+        track_id = track.track_id
+    created = _create(WorkingPreviewService(factory), graph, "mixer-pinned")
+    with factory.begin() as session:
+        working = session.get(WorkingComposition, graph.working_id)
+        track = session.get(CompositionTrack, track_id)
+        assert working is not None and track is not None
+        working.master_gain_db = Decimal("0.00")
+        track.gain_db, track.pan, track.muted, track.solo = (
+            Decimal("0.00"),
+            Decimal("0.00"),
+            True,
+            False,
+        )
+    with factory() as session:
+        render = session.get(WorkingPreviewRender, created.preview_render_id)
+        pinned = session.get(
+            WorkingPreviewRenderTrack,
+            {"preview_render_id": created.preview_render_id, "track_id": track_id},
+        )
+        assert render is not None and render.master_gain_db == Decimal("-3.00")
+        assert pinned is not None
+        assert (pinned.gain_db, pinned.pan, pinned.muted, pinned.solo) == (
+            Decimal("2.00"),
+            Decimal("0.50"),
+            False,
+            True,
+        )
 
 
 def test_preview_product_api_returns_async_job_without_locator_exposure(preview_graph) -> None:

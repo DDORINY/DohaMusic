@@ -100,9 +100,10 @@ class PipelineWorker:
                 metadata_path = self._write_metadata(job.id, metadata)
                 context.metadata_file = metadata_path
                 self._ensure_not_cancelled(repository, job)
+                metadata = self._complete_audio_analysis(repository, job, context, metadata)
+                self._ensure_not_cancelled(repository, job)
                 if not repository.finalize_success(job, metadata, self._file_entries(context)):
                     raise PipelineCancelled
-                self._complete_audio_analysis(repository, job, context, metadata)
                 logger.info(
                     "pipeline_worker_completed job_id=%s duration_ms=%s",
                     job_id,
@@ -238,8 +239,8 @@ class PipelineWorker:
         job: Any,
         context: PipelineContext,
         metadata: dict[str, Any],
-    ) -> None:
-        """Best-effort post-processing after the Pipeline success boundary."""
+    ) -> dict[str, Any]:
+        """Finish best-effort analysis before publishing the success boundary."""
 
         requested_bpm = self._requested_bpm(job.input_snapshot)
         if context.output_file is None:
@@ -301,7 +302,7 @@ class PipelineWorker:
             except Exception:
                 repository.session.rollback()
                 logger.exception("audio_analysis_failure_metadata_save_failed job_id=%s", job.id)
-                return
+                return updated_metadata
         try:
             self._write_metadata(job.id, updated_metadata)
         except OSError:
@@ -312,6 +313,7 @@ class PipelineWorker:
             analysis.analysis_status.value,
             analysis.audio_analysis_version,
         )
+        return updated_metadata
 
     @staticmethod
     def _kpop_metadata(snapshot: object) -> dict[str, object]:

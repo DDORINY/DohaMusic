@@ -154,8 +154,8 @@ async function mockBackend(
   await page.route("**/backend/api/projects", (route) =>
     route.fulfill({ json: [{ id: "project-001", title: "Default Project", description: null, created_at: pipeline.created_at, updated_at: pipeline.updated_at, job_count: 1 }] }),
   );
-  await page.route("**/backend/api/projects/project-001", (route) =>
-    route.fulfill({ json: { id: "project-001", title: "Default Project", description: null, created_at: pipeline.created_at, updated_at: pipeline.updated_at, job_count: 1, jobs: [{ job_id: "job-001", project_id: "project-001", title: "새벽 도시 R&B", status: "COMPLETED", created_at: pipeline.created_at, duration: 30, voice_profile_name: "Doha Voice", has_audio: true, can_cancel: false, can_retry: false, retry_of_job_id: null, audio_analysis: pipeline.audio_analysis }] } }),
+  await page.route("**/backend/api/v1/projects/project-001", (route) =>
+    route.fulfill({ json: { data: { project_id: "project-001", title: "Default Project", description: null, created_at: pipeline.created_at, updated_at: pipeline.updated_at } } }),
   );
 }
 test("History에서 Result와 Player로 다시 이동한다", async ({ page }) => {
@@ -204,9 +204,8 @@ test("History와 Project에서 분석 상태를 간결하게 표시한다", asyn
   await expect(page.getByText(/119\.8 BPM/)).toHaveCount(0);
   await expect(page.getByText(/00:12~00:27/)).toHaveCount(0);
   await page.goto("/projects/project-001");
-  await expect(page.getByText(/분석 완료 · 클리핑 없음 · -13.8 LUFS/)).toBeVisible();
-  await expect(page.getByText(/예상 템포는 약 119\.8 BPM/)).toBeVisible();
-  await expect(page.getByText(/후렴 후보 · 추정 구간 00:12~00:27/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Default Project", exact: true })).toBeVisible();
+  await expect(page.getByText("설명 없음", { exact: true })).toBeVisible();
 });
 test("Landing에서 결과 metadata까지 핵심 흐름을 완료한다", async ({ page }) => {
   await page.addInitScript(() => {

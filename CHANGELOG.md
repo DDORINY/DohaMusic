@@ -11,6 +11,18 @@ DohaMusic 프로젝트의 주요 변경 사항을 기록한다. 일반 작업은
 
 ## [Unreleased]
 
+### 추가 - Export Production Worker Runner
+
+- API가 생성한 queued Export Job을 Export-only claim/lease CAS로 발견해 canonical WAV
+  `ExportWorkerService`로 전달하는 production runner를 application lifespan에 연결했다.
+- 만료된 Export claim의 restart recovery, concurrent runner claim 단일화, cancellation 제외,
+  iteration failure isolation 및 graceful shutdown 계약을 ADR-065로 기록했다.
+
+### 수정 — API Surface 계약 완결
+
+- Legacy Pipeline content/download의 GET·HEAD operation ID를 method별로 명시해 OpenAPI operation ID 중복 2종을 제거했다. 공개 path, HTTP method와 request/response semantics는 변경하지 않았다.
+- 전체 Runtime API count, method/path·operation ID 유일성, `$ref`와 path parameter 무결성, critical Product API 및 canonical surface fingerprint를 fail-closed regression Gate로 고정했다.
+
 ### 추가 — Multi-user Concurrent Editing Recovery
 
 - ADR-057에서 WorkingComposition aggregate revision CAS를 multi-user authority로 확정하고 same/different field·different Clip·Undo/Redo·structural·Commit/Checkout/Preview stale request를 fail-closed한다.

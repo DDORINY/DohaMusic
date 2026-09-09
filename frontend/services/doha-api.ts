@@ -28,6 +28,7 @@ import type {
   WorkingPreviewCreateResultDto,
   WorkingHistoryDetailDto,
   WorkspaceJobDetailDto,
+  WorkspaceExportJobCreateDto,
 } from "@/types/api";
 import type {
   VoiceEnrollmentCreateRequest,
@@ -40,6 +41,10 @@ import {
 } from "@/features/voice/voice-enrollment-utils";
 
 export const dohaApi = {
+  createWorkspaceExportJob: (data: WorkspaceExportJobCreateDto, key: string, signal?: AbortSignal) =>
+    workspaceData<WorkspaceJobDetailDto>("/api/v1/jobs", { ...mutationInit("POST", data, key), signal }),
+  cancelWorkspaceJob: (jobId: string, signal?: AbortSignal) =>
+    workspaceData<WorkspaceJobDetailDto>(`/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST", signal }),
   health: () => apiRequest<{ status: string }>("/health"),
   createLyrics: (data: LyricsCreateDto) =>
     apiRequest<LyricsDocumentDto>("/api/lyrics", {
@@ -183,7 +188,21 @@ export const dohaApi = {
     apiRequest<HistoryDetailDto>(`/api/history/${encodeURIComponent(id)}`),
   getProjects: () => apiRequest<ProjectDto[]>("/api/projects"),
   getProject: (id: string) =>
-    apiRequest<ProjectDetailDto>(`/api/projects/${encodeURIComponent(id)}`),
+    workspaceData<{
+      project_id: string;
+      title: string;
+      description: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(`/api/v1/projects/${encodeURIComponent(id)}`).then((project) => ({
+      id: project.project_id,
+      title: project.title,
+      description: project.description,
+      created_at: project.created_at,
+      updated_at: project.updated_at,
+      job_count: 0,
+      jobs: [] as ProjectDetailDto["jobs"],
+    } satisfies ProjectDetailDto)),
   createProject: (data: { title: string; description?: string }) =>
     apiRequest<ProjectDto>("/api/projects", {
       method: "POST",
@@ -269,6 +288,10 @@ export const dohaApi = {
     workspaceData<WorkingTrackResultDto>(`${workingPath(projectId)}/tracks/${encodeURIComponent(trackId)}`, mutationInit("PATCH", body)),
   reorderWorkingTracks: (projectId: string, body: WorkingBase & { ordered_track_ids: string[] }) =>
     workspaceData<WorkingReorderResultDto>(`${workingPath(projectId)}/tracks/reorder`, mutationInit("PATCH", body)),
+  updateWorkingTrackMixer: (projectId: string, trackId: string, body: WorkingBase & { gain_db: number; pan: number; muted: boolean; solo: boolean }, idempotencyKey: string) =>
+    workspaceData<WorkingTrackResultDto>(`${workingPath(projectId)}/tracks/${encodeURIComponent(trackId)}/mixer`, mutationInit("PATCH", body, idempotencyKey)),
+  updateWorkingMasterGain: (projectId: string, body: WorkingBase & { master_gain_db: number }, idempotencyKey: string) =>
+    workspaceData<WorkingInitializeResultDto>(`${workingPath(projectId)}/master-gain`, mutationInit("PATCH", body, idempotencyKey)),
   deleteWorkingTrack: (projectId: string, trackId: string, body: WorkingBase, idempotencyKey: string) =>
     workspaceData<WorkingTrackResultDto>(`${workingPath(projectId)}/tracks/${encodeURIComponent(trackId)}`, mutationInit("DELETE", body, idempotencyKey)),
   restoreWorkingTrack: (projectId: string, trackId: string, body: WorkingBase & { target_track_order: number }, idempotencyKey: string) =>

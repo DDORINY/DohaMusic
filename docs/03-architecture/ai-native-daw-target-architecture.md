@@ -206,8 +206,8 @@ flowchart LR
 | Composition QA | CompositionEvaluationRun, 통합 Report, RevisionPlan 실행 미구현 |
 | Reference | 승인 source ingestion·ReferenceAnalysis·FeatureRecord 연결 미구현 |
 | Learning | LearningCandidate review와 Rights/Eligibility/Dataset 연결 미구현 |
-| Frontend | Track/Clip basic editing·source-window Waveform·Working Preview integration 구현; Mixer·AI Director·QA page 미구현 |
-| Export | 독립 Export Asset과 MP3·FLAC 미구현 |
+| Frontend | Track/Clip basic editing, source-window Waveform, Working Preview, Track/Master Mixer, WAV Export UX 구현; AI Director·QA page 미구현 |
+| Export | CompositionSnapshot 기반 canonical WAV Export, Project Export Asset lineage, durable publication, production runner 구현; MP3·FLAC 미구현 |
 
 ## 6. 설계 보류 항목
 

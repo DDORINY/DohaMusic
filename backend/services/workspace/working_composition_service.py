@@ -87,6 +87,8 @@ class WorkingCompositionErrorCode(StrEnum):
     CLIP_GAIN_OUT_OF_RANGE = "CLIP_GAIN_OUT_OF_RANGE"
     CLIP_FADE_OUT_OF_RANGE = "CLIP_FADE_OUT_OF_RANGE"
     CLIP_LOOP_GEOMETRY_INVALID = "CLIP_LOOP_GEOMETRY_INVALID"
+    TRACK_MIXER_OUT_OF_RANGE = "TRACK_MIXER_OUT_OF_RANGE"
+    MASTER_GAIN_OUT_OF_RANGE = "MASTER_GAIN_OUT_OF_RANGE"
     WORKING_HISTORY_EMPTY = "WORKING_HISTORY_EMPTY"
     WORKING_HISTORY_STRUCTURE_CONFLICT = "WORKING_HISTORY_STRUCTURE_CONFLICT"
     SPLIT_STRUCTURE_CONFLICT = "SPLIT_STRUCTURE_CONFLICT"
@@ -126,6 +128,8 @@ _SAFE_ERROR_MESSAGES = {
         "Clip Fade는 0 이상이며 합이 Clip 길이 이하인 0.000001초 단위 유한값이어야 합니다."
     ),
     WorkingCompositionErrorCode.CLIP_LOOP_GEOMETRY_INVALID: "Clip Loop geometry is invalid.",
+    WorkingCompositionErrorCode.TRACK_MIXER_OUT_OF_RANGE: "Track Mixer state is invalid.",
+    WorkingCompositionErrorCode.MASTER_GAIN_OUT_OF_RANGE: "Master Gain is invalid.",
     WorkingCompositionErrorCode.WORKING_HISTORY_EMPTY: (
         "No WorkingComposition history command is available."
     ),
@@ -181,7 +185,7 @@ class WorkingMutationResult:
     completed_revision: int
     replayed: bool
     result_type: IdempotencyResultType | None
-    identities: Mapping[str, UUID]
+    identities: Mapping[str, UUID | str]
 
 
 class WorkingCompositionService:
@@ -284,7 +288,7 @@ class WorkingCompositionService:
 
         def mutate(
             repository: CompositionRepository, session: Session, working: WorkingComposition
-        ) -> UUID:
+        ) -> tuple[str, UUID, UUID | None]:
             history = CompositionHistoryRepository(session)
             entry = (
                 history.current_redo(working_composition_id)
@@ -293,20 +297,10 @@ class WorkingCompositionService:
             )
             if entry is None:
                 raise WorkingCompositionError(WorkingCompositionErrorCode.WORKING_HISTORY_EMPTY)
-            clip = repository.get_composition_clip(working_composition_id, entry.clip_id)
-            if clip is None:
-                raise WorkingCompositionError(
-                    WorkingCompositionErrorCode.WORKING_HISTORY_STRUCTURE_CONFLICT
-                )
-            self._apply_history_clip_state(
-                repository,
-                working,
-                clip,
-                entry.command_type,
-                entry.after_state if redo else entry.before_state,
-            )
+            state = entry.after_state if redo else entry.before_state
+            self._apply_history_state(repository, working, entry, state)
             history.move_cursor(working_composition_id, 1 if redo else -1)
-            return clip.clip_id
+            return entry.target_type, entry.target_id, entry.clip_id
 
         return self._run_idempotent_mutation(
             **normalized,
@@ -315,11 +309,62 @@ class WorkingCompositionService:
             target_identity=None,
             body={},
             mutate=mutate,
-            payload=lambda identity: {"clip_id": identity},
-            resource_type="composition_clip",
-            resource_id=lambda identity: identity,
+            payload=lambda identity: {
+                "target_type": identity[0],
+                "target_id": identity[1],
+                **({"clip_id": identity[2]} if identity[2] is not None else {}),
+            },
+            resource_type="working_history_target",
+            resource_id=lambda identity: identity[1],
             response_status=200,
         )
+
+    def _apply_history_state(self, repository, working, entry, state: Mapping[str, object]) -> None:
+        matrix = {
+            "CLIP_GAIN": "CLIP",
+            "CLIP_FADE": "CLIP",
+            "CLIP_LOOP": "CLIP",
+            "TRACK_MIXER": "TRACK",
+            "MASTER_GAIN": "WORKING_COMPOSITION",
+        }
+        if matrix.get(entry.command_type) != entry.target_type:
+            raise WorkingCompositionError(
+                WorkingCompositionErrorCode.WORKING_HISTORY_STRUCTURE_CONFLICT
+            )
+        if entry.target_type == "CLIP":
+            clip = repository.get_composition_clip(working.working_composition_id, entry.target_id)
+            if clip is None or entry.clip_id != entry.target_id:
+                raise WorkingCompositionError(
+                    WorkingCompositionErrorCode.WORKING_HISTORY_STRUCTURE_CONFLICT
+                )
+            self._apply_history_clip_state(repository, working, clip, entry.command_type, state)
+        elif entry.target_type == "TRACK":
+            track = repository.get_composition_track(
+                working.working_composition_id, entry.target_id
+            )
+            if track is None or set(state) != {"gain_db", "pan", "muted", "solo"}:
+                raise WorkingCompositionError(
+                    WorkingCompositionErrorCode.WORKING_HISTORY_STRUCTURE_CONFLICT
+                )
+            track.gain_db = _normalize_mixer_gain(Decimal(str(state["gain_db"])), master=False)
+            track.pan = _normalize_pan(Decimal(str(state["pan"])))
+            track.muted, track.solo = _history_bool(state["muted"]), _history_bool(state["solo"])
+            repository.flush()
+        elif entry.target_type == "WORKING_COMPOSITION":
+            if entry.target_id != working.working_composition_id or set(state) != {
+                "master_gain_db"
+            }:
+                raise WorkingCompositionError(
+                    WorkingCompositionErrorCode.WORKING_HISTORY_STRUCTURE_CONFLICT
+                )
+            working.master_gain_db = _normalize_mixer_gain(
+                Decimal(str(state["master_gain_db"])), master=True
+            )
+            repository.flush()
+        else:
+            raise WorkingCompositionError(
+                WorkingCompositionErrorCode.WORKING_HISTORY_STRUCTURE_CONFLICT
+            )
 
     def _apply_history_clip_state(
         self,
@@ -540,6 +585,7 @@ class WorkingCompositionService:
                     snapshot_version=repository.get_next_snapshot_version(project_id),
                     processing_chain_id=None,
                     mix_settings_snapshot=dict(working.mix_settings),
+                    master_gain_db=working.master_gain_db,
                     provider_versions={},
                     model_manifest_ids={},
                     created_by=effective_owner_id,
@@ -554,6 +600,10 @@ class WorkingCompositionService:
                         track_type=track.track_type,
                         name=track.name,
                         track_order=track.track_order,
+                        gain_db=track.gain_db,
+                        pan=track.pan,
+                        muted=track.muted,
+                        solo=track.solo,
                     )
                 )
                 snapshot_track_ids[track.track_id] = frozen.snapshot_track_id
@@ -1005,6 +1055,109 @@ class WorkingCompositionService:
             mutate=mutate,
             payload=lambda identity: {"clip_id": identity},
             resource_type="composition_clip",
+            resource_id=lambda identity: identity,
+            response_status=200,
+        )
+
+    def set_track_mixer(
+        self,
+        project_id: UUID,
+        *,
+        working_composition_id: UUID,
+        track_id: UUID,
+        gain_db: object,
+        pan: object,
+        muted: bool,
+        solo: bool,
+        expected_revision: int,
+        effective_owner_id: UUID,
+        idempotency_key: str,
+    ) -> WorkingMutationResult:
+        normalized = self._normalize_mutation(
+            project_id=project_id,
+            working_composition_id=working_composition_id,
+            expected_revision=expected_revision,
+            effective_owner_id=effective_owner_id,
+        )
+        _validate_uuid(track_id, "track_id")
+        gain, normalized_pan = _normalize_mixer_gain(gain_db, master=False), _normalize_pan(pan)
+        if type(muted) is not bool or type(solo) is not bool:
+            raise WorkingCompositionError(WorkingCompositionErrorCode.TRACK_MIXER_OUT_OF_RANGE)
+
+        def mutate(repository, session, working):
+            track = self._require_track(repository, working, track_id)
+            before = _track_mixer_state(track)
+            track.gain_db, track.pan, track.muted, track.solo = gain, normalized_pan, muted, solo
+            repository.flush()
+            CompositionHistoryRepository(session).append(
+                working_composition_id=working.working_composition_id,
+                command_type="TRACK_MIXER",
+                target_type="TRACK",
+                target_id=track.track_id,
+                before_state=before,
+                after_state=_track_mixer_state(track),
+            )
+            return track.track_id
+
+        return self._run_idempotent_mutation(
+            **normalized,
+            idempotency_key=idempotency_key,
+            operation=IdempotencyResultType.TRACK_MIXER_UPDATE,
+            target_identity=track_id,
+            body={
+                "gain_db": f"{gain:.2f}",
+                "pan": f"{normalized_pan:.2f}",
+                "muted": muted,
+                "solo": solo,
+            },
+            mutate=mutate,
+            payload=lambda identity: {"track_id": identity},
+            resource_type="composition_track",
+            resource_id=lambda identity: identity,
+            response_status=200,
+        )
+
+    def set_master_gain(
+        self,
+        project_id: UUID,
+        *,
+        working_composition_id: UUID,
+        master_gain_db: object,
+        expected_revision: int,
+        effective_owner_id: UUID,
+        idempotency_key: str,
+    ) -> WorkingMutationResult:
+        normalized = self._normalize_mutation(
+            project_id=project_id,
+            working_composition_id=working_composition_id,
+            expected_revision=expected_revision,
+            effective_owner_id=effective_owner_id,
+        )
+        gain = _normalize_mixer_gain(master_gain_db, master=True)
+
+        def mutate(repository, session, working):
+            before = {"master_gain_db": f"{working.master_gain_db:.2f}"}
+            working.master_gain_db = gain
+            repository.flush()
+            CompositionHistoryRepository(session).append(
+                working_composition_id=working.working_composition_id,
+                command_type="MASTER_GAIN",
+                target_type="WORKING_COMPOSITION",
+                target_id=working.working_composition_id,
+                before_state=before,
+                after_state={"master_gain_db": f"{gain:.2f}"},
+            )
+            return working.working_composition_id
+
+        return self._run_idempotent_mutation(
+            **normalized,
+            idempotency_key=idempotency_key,
+            operation=IdempotencyResultType.MASTER_GAIN_UPDATE,
+            target_identity=working_composition_id,
+            body={"master_gain_db": f"{gain:.2f}"},
+            mutate=mutate,
+            payload=lambda identity: {"working_composition_id": identity},
+            resource_type="working_composition",
             resource_id=lambda identity: identity,
             response_status=200,
         )
@@ -1836,6 +1989,8 @@ class WorkingCompositionService:
                 IdempotencyResultType.CLIP_GAIN_UPDATE,
                 IdempotencyResultType.CLIP_FADE_UPDATE,
                 IdempotencyResultType.CLIP_LOOP_UPDATE,
+                IdempotencyResultType.TRACK_MIXER_UPDATE,
+                IdempotencyResultType.MASTER_GAIN_UPDATE,
                 IdempotencyResultType.WORKING_HISTORY_UNDO,
                 IdempotencyResultType.WORKING_HISTORY_REDO,
                 IdempotencyResultType.WORKING_COMPOSITION_CHECKOUT,
@@ -1907,12 +2062,20 @@ class WorkingCompositionService:
                     track_type=source.track_type,
                     name=source.name,
                     track_order=source.track_order,
+                    gain_db=source.gain_db,
+                    pan=source.pan,
+                    muted=source.muted,
+                    solo=source.solo,
                 )
                 repository.add_composition_track(target)
             else:
                 target.track_type = source.track_type
                 target.name = source.name
                 target.track_order = source.track_order
+                target.gain_db = source.gain_db
+                target.pan = source.pan
+                target.muted = source.muted
+                target.solo = source.solo
                 target.deleted_at = None
                 repository.flush()
             track_by_snapshot_id[source.snapshot_track_id] = target.track_id
@@ -1952,6 +2115,7 @@ class WorkingCompositionService:
                 target.deleted_at = None
                 repository.flush()
         working.base_composition_snapshot_id = composition_snapshot_id
+        working.master_gain_db = snapshot.master_gain_db
         repository.flush()
         return working.working_composition_id
 
@@ -2232,7 +2396,10 @@ def _replay_result(
         completed_revision=result.completed_revision,
         replayed=True,
         result_type=result.result_type,
-        identities={key: UUID(value) for key, value in result.result_payload.items()},
+        identities={
+            key: (value if key == "target_type" else UUID(value))
+            for key, value in result.result_payload.items()
+        },
     )
 
 
@@ -2242,7 +2409,7 @@ def _complete_result(
     *,
     completed_revision: int,
     result_type: IdempotencyResultType,
-    payload: Mapping[str, UUID],
+    payload: Mapping[str, UUID | str],
     resource_type: str,
     resource_id: UUID,
     response_status: int,
@@ -2378,6 +2545,50 @@ def _normalize_clip_gain_db(value: object) -> Decimal:
     if gain != quantized or not MIN_CLIP_GAIN_DB <= quantized <= MAX_CLIP_GAIN_DB:
         raise WorkingCompositionError(WorkingCompositionErrorCode.CLIP_GAIN_OUT_OF_RANGE)
     return quantized
+
+
+def _normalize_pan(value: object) -> Decimal:
+    if isinstance(value, (bool, str)):
+        raise WorkingCompositionError(WorkingCompositionErrorCode.TRACK_MIXER_OUT_OF_RANGE)
+    try:
+        pan = value if isinstance(value, Decimal) else Decimal(str(value))
+        quantized = pan.quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        raise WorkingCompositionError(
+            WorkingCompositionErrorCode.TRACK_MIXER_OUT_OF_RANGE
+        ) from None
+    if not pan.is_finite() or pan != quantized or not Decimal("-1") <= pan <= Decimal("1"):
+        raise WorkingCompositionError(WorkingCompositionErrorCode.TRACK_MIXER_OUT_OF_RANGE)
+    return quantized
+
+
+def _track_mixer_state(track: CompositionTrack) -> dict[str, object]:
+    return {
+        "gain_db": f"{track.gain_db:.2f}",
+        "pan": f"{track.pan:.2f}",
+        "muted": track.muted,
+        "solo": track.solo,
+    }
+
+
+def _normalize_mixer_gain(value: object, *, master: bool) -> Decimal:
+    try:
+        return _normalize_clip_gain_db(value)
+    except WorkingCompositionError:
+        code = (
+            WorkingCompositionErrorCode.MASTER_GAIN_OUT_OF_RANGE
+            if master
+            else WorkingCompositionErrorCode.TRACK_MIXER_OUT_OF_RANGE
+        )
+        raise WorkingCompositionError(code) from None
+
+
+def _history_bool(value: object) -> bool:
+    if type(value) is not bool:
+        raise WorkingCompositionError(
+            WorkingCompositionErrorCode.WORKING_HISTORY_STRUCTURE_CONFLICT
+        )
+    return value
 
 
 def _normalize_fade_duration(value: object) -> int:

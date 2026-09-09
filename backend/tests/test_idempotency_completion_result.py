@@ -54,6 +54,8 @@ def _result(
         IdempotencyResultType.CLIP_CREATE: {"clip_id": str(uuid4())},
         IdempotencyResultType.CLIP_COPY: {"clip_id": str(uuid4())},
         IdempotencyResultType.CLIP_GAIN_UPDATE: {"clip_id": str(uuid4())},
+        IdempotencyResultType.TRACK_MIXER_UPDATE: {"track_id": str(uuid4())},
+        IdempotencyResultType.MASTER_GAIN_UPDATE: {"working_composition_id": str(uuid4())},
         IdempotencyResultType.CLIP_FADE_UPDATE: {"clip_id": str(uuid4())},
         IdempotencyResultType.CLIP_LOOP_UPDATE: {"clip_id": str(uuid4())},
         IdempotencyResultType.CLIP_LOOP_RESTORE: {"clip_id": str(uuid4())},

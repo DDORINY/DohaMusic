@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from uuid import UUID
+from typing import BinaryIO
+from uuid import UUID, uuid4
 
+from backend.storage.artifact_integrity import calculate_artifact_integrity
 from backend.storage.artifact_media import (
     ArtifactMediaValidationError,
     ValidatedArtifactMedia,
@@ -36,6 +39,9 @@ class ArtifactPublishErrorCode(StrEnum):
     PUBLISH_COLLISION = "PUBLISH_COLLISION"
     PUBLISH_FAILED = "PUBLISH_FAILED"
     VERIFICATION_FAILED = "VERIFICATION_FAILED"
+    PUBLICATION_NOT_FOUND = "PUBLICATION_NOT_FOUND"
+    PUBLICATION_IDENTITY_INVALID = "PUBLICATION_IDENTITY_INVALID"
+    PUBLICATION_INTEGRITY_MISMATCH = "PUBLICATION_INTEGRITY_MISMATCH"
 
 
 class ArtifactPublishError(RuntimeError):
@@ -54,6 +60,39 @@ class PublishedLocalPayload:
     file_identity: tuple[int, int]
     source_path: Path
     source_identity: tuple[int, int]
+
+
+class PublicationOutcome(StrEnum):
+    PUBLISHED_NEW = "published_new"
+    ADOPTED_EXISTING = "adopted_existing"
+
+
+@dataclass(frozen=True, slots=True)
+class TrustedPublicationIdentity:
+    """Internal Job-owned storage identity; never constructed from user path input."""
+
+    job_id: UUID
+    storage_domain: str
+    storage_key: str
+
+    @classmethod
+    def for_wav_export(cls, job_id: UUID) -> TrustedPublicationIdentity:
+        if type(job_id) is not UUID:
+            raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_IDENTITY_INVALID)
+        return cls(job_id, "music", f"exports/{job_id.hex[:2]}/{job_id}/result.wav")
+
+
+@dataclass(frozen=True, slots=True)
+class PublishOrAdoptResult:
+    identity: TrustedPublicationIdentity
+    outcome: PublicationOutcome
+    path: Path
+    size_bytes: int
+    checksum: str
+    media: ValidatedArtifactMedia
+    file_identity: tuple[int, int]
+    source_path: Path | None = None
+    source_identity: tuple[int, int] | None = None
 
 
 class LocalArtifactPublisher:
@@ -153,6 +192,168 @@ class LocalArtifactPublisher:
             raise
         finally:
             _unlink_if_identity_matches(pending_path, pending_identity)
+
+    def publish_or_adopt(
+        self,
+        temporary_path: Path,
+        *,
+        identity: TrustedPublicationIdentity,
+        artifact_kind: str,
+        expected_media_type: str,
+        expected_sha256: str,
+        expected_size_bytes: int,
+    ) -> PublishOrAdoptResult:
+        """Publish once or adopt an exact existing internal publication."""
+        final_path = self._publication_path(identity)
+        source_path, source_identity = self._resolve_staging_payload(temporary_path)
+        source_integrity = _integrity_from_regular_file(self.staging_root, source_path)
+        if (
+            source_integrity.checksum != expected_sha256
+            or source_integrity.size_bytes != expected_size_bytes
+        ):
+            raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_INTEGRITY_MISMATCH)
+        try:
+            source_media = validate_artifact_media(
+                source_path, artifact_kind=artifact_kind, size_bytes=expected_size_bytes
+            )
+        except ArtifactMediaValidationError:
+            raise ArtifactPublishError(ArtifactPublishErrorCode.MEDIA_VALIDATION_FAILED) from None
+        if source_media.media_type != expected_media_type:
+            raise ArtifactPublishError(ArtifactPublishErrorCode.MEDIA_TYPE_MISMATCH)
+
+        root = self.artifact_roots.roots[identity.storage_domain]
+        pending_dir = _ensure_directory(root, root / ".ingestion")
+        pending_path = pending_dir / f"publication-{uuid4()}.pending"
+        checksum, size_bytes, pending_identity = _copy_exclusive(
+            source_path, pending_path, staging_root=self.staging_root
+        )
+        try:
+            _ensure_directory(root, final_path.parent)
+            try:
+                os.link(pending_path, final_path)
+                final_stat = final_path.stat(follow_symlinks=False)
+                file_identity = (final_stat.st_dev, final_stat.st_ino)
+                if (
+                    not stat.S_ISREG(final_stat.st_mode)
+                    or file_identity != pending_identity
+                    or final_stat.st_size != size_bytes
+                ):
+                    _unlink_if_identity_matches(final_path, pending_identity)
+                    raise ArtifactPublishError(ArtifactPublishErrorCode.VERIFICATION_FAILED)
+                _sync_directory(final_path.parent)
+                return PublishOrAdoptResult(
+                    identity,
+                    PublicationOutcome.PUBLISHED_NEW,
+                    final_path,
+                    size_bytes,
+                    checksum,
+                    source_media,
+                    file_identity,
+                    source_path,
+                    source_identity,
+                )
+            except FileExistsError:
+                return self._verify_existing_publication(
+                    identity,
+                    artifact_kind=artifact_kind,
+                    expected_media_type=expected_media_type,
+                    expected_sha256=expected_sha256,
+                    expected_size_bytes=expected_size_bytes,
+                )
+            except OSError:
+                raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLISH_FAILED) from None
+        finally:
+            _unlink_if_identity_matches(pending_path, pending_identity)
+
+    @contextmanager
+    def open_trusted_publication(
+        self,
+        identity: TrustedPublicationIdentity,
+        *,
+        artifact_kind: str,
+        expected_media_type: str,
+        expected_sha256: str,
+        expected_size_bytes: int,
+    ) -> Iterator[tuple[PublishOrAdoptResult, BinaryIO]]:
+        verified = self._verify_existing_publication(
+            identity,
+            artifact_kind=artifact_kind,
+            expected_media_type=expected_media_type,
+            expected_sha256=expected_sha256,
+            expected_size_bytes=expected_size_bytes,
+        )
+        root = self.artifact_roots.roots[identity.storage_domain]
+        try:
+            descriptor, observed = open_regular_local_file(root, verified.path)
+        except ArtifactStorageError:
+            raise ArtifactPublishError(ArtifactPublishErrorCode.VERIFICATION_FAILED) from None
+        if (observed.st_dev, observed.st_ino) != verified.file_identity:
+            os.close(descriptor)
+            raise ArtifactPublishError(ArtifactPublishErrorCode.VERIFICATION_FAILED)
+        with os.fdopen(descriptor, "rb", closefd=True) as stream:
+            yield verified, stream
+
+    def compensate_publish_or_adopt(self, result: PublishOrAdoptResult) -> bool:
+        if result.outcome is PublicationOutcome.ADOPTED_EXISTING:
+            return False
+        removed = _unlink_if_identity_matches(result.path, result.file_identity)
+        if removed:
+            _sync_directory(result.path.parent)
+        return removed
+
+    def _publication_path(self, identity: TrustedPublicationIdentity) -> Path:
+        if (
+            not isinstance(identity, TrustedPublicationIdentity)
+            or identity.storage_domain != "music"
+            or identity.storage_key
+            != f"exports/{identity.job_id.hex[:2]}/{identity.job_id}/result.wav"
+        ):
+            raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_IDENTITY_INVALID)
+        try:
+            return self.artifact_roots.candidate_path(identity.storage_domain, identity.storage_key)
+        except ArtifactStorageError:
+            raise ArtifactPublishError(
+                ArtifactPublishErrorCode.PUBLICATION_IDENTITY_INVALID
+            ) from None
+
+    def _verify_existing_publication(
+        self,
+        identity: TrustedPublicationIdentity,
+        *,
+        artifact_kind: str,
+        expected_media_type: str,
+        expected_sha256: str,
+        expected_size_bytes: int,
+    ) -> PublishOrAdoptResult:
+        final_path = self._publication_path(identity)
+        root = self.artifact_roots.roots[identity.storage_domain]
+        if not final_path.exists():
+            raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_NOT_FOUND)
+        try:
+            integrity = _integrity_from_regular_file(root, final_path)
+            media = validate_artifact_media(
+                final_path, artifact_kind=artifact_kind, size_bytes=integrity.size_bytes
+            )
+            payload_stat = final_path.stat(follow_symlinks=False)
+        except ArtifactMediaValidationError:
+            raise ArtifactPublishError(ArtifactPublishErrorCode.MEDIA_VALIDATION_FAILED) from None
+        except (ArtifactStorageError, OSError):
+            raise ArtifactPublishError(ArtifactPublishErrorCode.VERIFICATION_FAILED) from None
+        if (
+            integrity.checksum != expected_sha256
+            or integrity.size_bytes != expected_size_bytes
+            or media.media_type != expected_media_type
+        ):
+            raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_INTEGRITY_MISMATCH)
+        return PublishOrAdoptResult(
+            identity,
+            PublicationOutcome.ADOPTED_EXISTING,
+            final_path,
+            integrity.size_bytes,
+            integrity.checksum,
+            media,
+            (payload_stat.st_dev, payload_stat.st_ino),
+        )
 
     def compensate(self, published: PublishedLocalPayload) -> bool:
         removed = _unlink_if_identity_matches(published.path, published.file_identity)
@@ -293,6 +494,12 @@ def _build_storage_key(
         else f"payloads/{artifact_kind}"
     )
     return f"{namespace}/{artifact_id.hex[:2]}/{artifact_id}.{extension}"
+
+
+def _integrity_from_regular_file(root: Path, path: Path):
+    descriptor, _ = open_regular_local_file(root, path)
+    with os.fdopen(descriptor, "rb", closefd=True) as stream:
+        return calculate_artifact_integrity(stream)
 
 
 def _unlink_if_identity_matches(path: Path, identity: tuple[int, int]) -> bool:

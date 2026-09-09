@@ -38,7 +38,12 @@ POST_REVISION_INDEX_NAMES = {
     "ix_artifacts_version_created",
     "uq_composition_snapshots_project_identity",
 }
-POST_REVISION_CONSTRAINT_NAMES = {"ck_artifacts_positive_duration_us"}
+POST_REVISION_CONSTRAINT_NAMES = {
+    "ck_artifacts_positive_duration_us",
+    "fk_music_projects_export_project_asset",
+    "uq_music_projects_export_project_asset",
+    "uq_project_assets_project_identity",
+}
 FORBIDDEN_OPERATIONS = {
     "add_column",
     "alter_column",
@@ -71,6 +76,8 @@ def _workspace_tables() -> set[str]:
             "working_compositions",
             "working_composition_history_entries",
             "working_composition_history_states",
+            "job_export_results",
+            "job_export_publications",
         }
     }
 
@@ -125,7 +132,7 @@ def test_workspace_revision_is_additive_and_matches_metadata() -> None:
 
     assert _revision_assignment("revision") == REVISION
     assert _revision_assignment("down_revision") == PREVIOUS_REVISION
-    assert len(WORKSPACE_ENTITY_CLASSES) == 33
+    assert len(WORKSPACE_ENTITY_CLASSES) == 35
     assert len(workspace_tables) == 21
     assert created_tables == workspace_tables
     assert dropped_tables == workspace_tables
@@ -179,6 +186,8 @@ def test_workspace_revision_round_trip_on_temporary_sqlite(tmp_path: Path) -> No
             "working_compositions",
             "working_composition_history_entries",
             "working_composition_history_states",
+            "job_export_results",
+            "job_export_publications",
         }
     )
     engine = create_database_engine(database_url)
@@ -213,6 +222,8 @@ def test_workspace_revision_round_trip_on_temporary_sqlite(tmp_path: Path) -> No
             "working_compositions",
             "working_composition_history_entries",
             "working_composition_history_states",
+            "job_export_results",
+            "job_export_publications",
         }
     )
     assert workspace_foreign_keys == 39

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
 from backend.models.workspace.mixins import utc_now
@@ -123,6 +123,21 @@ class WorkspaceRepository:
         if not include_deleted:
             statement = statement.where(MusicProject.deleted_at.is_(None))
         return self.session.scalar(statement)
+
+    def assign_export_project_asset_if_unset(
+        self, project_id: UUID, project_asset_id: UUID
+    ) -> MusicProject | None:
+        statement = (
+            update(MusicProject)
+            .where(
+                MusicProject.project_id == project_id,
+                MusicProject.export_project_asset_id.is_(None),
+                MusicProject.deleted_at.is_(None),
+            )
+            .values(export_project_asset_id=project_asset_id)
+            .returning(MusicProject)
+        )
+        return self.session.scalars(statement).one_or_none()
 
     def list_projects(
         self,

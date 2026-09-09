@@ -24,7 +24,7 @@ FADE_COLUMNS = {
 
 def test_clip_fade_revision_is_latest_single_head() -> None:
     script = ScriptDirectory.from_config(_config("sqlite://"))
-    assert script.get_heads() == ["20260905_0028"]
+    assert script.get_heads() == ["20260908_0032"]
     assert script.get_revision(REVISION).down_revision == PREVIOUS_REVISION
 
 
@@ -96,7 +96,7 @@ def test_clip_fade_fresh_bootstrap_reaches_head(tmp_path: Path) -> None:
             assert actual.issuperset(columns)
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "20260905_0028"
+            == "20260908_0032"
         )
         assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     engine.dispose()

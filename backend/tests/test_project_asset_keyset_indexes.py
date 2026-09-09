@@ -16,7 +16,7 @@ from backend.db.session import create_database_engine
 ROOT = Path(__file__).resolve().parents[2]
 REVISION = "20260807_0014"
 PREVIOUS_REVISION = "20260807_0013"
-SOURCE_HEAD = "20260905_0028"
+SOURCE_HEAD = "20260908_0032"
 INDEX_NAME = "ix_project_assets_active_keyset"
 INDEX_COLUMNS = ("project_id", "display_order", "project_asset_id")
 INDEX_PREDICATE = "deleted_at IS NULL"

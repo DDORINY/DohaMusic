@@ -81,7 +81,7 @@ Mix 파일 Artifact의 목표 위치는 `D:/DohaArtifacts/music/mixes`다. Provi
 
 ## Export Asset 계약
 
-Export는 선택한 Mix AssetVersion을 WAV·MP3·FLAC 같은 전달 형식으로 변환한다. 각 출력은 별도 Export AssetVersion과 Artifact로 추적하고 목표 위치는 `D:/DohaArtifacts/music/exports`다.
+WorkingComposition 경로의 Export는 immutable CompositionSnapshot을 WAV·MP3·FLAC 같은 전달 형식으로 변환한다. Project-owned Export Asset 아래 각 명시적 성공 결과를 별도 Export AssetVersion과 Artifact로 추적하며 목표 위치는 `D:/DohaArtifacts/music/exports`다. 상세 lineage는 [ADR-063](../11-decisions/ADR-063-export-asset-lineage-and-completion-authority.md)을 따른다.
 
 현재 구현은 Pipeline의 WAV Export만 제공하며 MP3·FLAC와 독립 Export Asset은 `[계획]`이다.
 
