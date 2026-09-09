@@ -3,20 +3,8 @@ name: Voice FFmpeg integration
 on:
   pull_request:
     branches: [develop]
-    paths:
-      - ".github/workflows/voice-ffmpeg-integration.yml"
-      - "ai_worker/**"
-      - "backend/**"
-      - "frontend/**"
-      - "pyproject.toml"
   push:
     branches: [develop]
-    paths:
-      - ".github/workflows/voice-ffmpeg-integration.yml"
-      - "ai_worker/**"
-      - "backend/**"
-      - "frontend/**"
-      - "pyproject.toml"
 
 permissions:
   contents: read
