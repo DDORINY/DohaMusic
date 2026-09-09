@@ -1,5 +1,27 @@
 import { test, expect, type Page } from "@playwright/test";
 const uuid = "11111111-1111-1111-1111-111111111111";
+
+function silentWavFixture() {
+  const frameCount = 480;
+  const dataSize = frameCount * 2 * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + dataSize, 4);
+  wav.write("WAVE", 8);
+  wav.write("fmt ", 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(2, 22);
+  wav.writeUInt32LE(48_000, 24);
+  wav.writeUInt32LE(48_000 * 2 * 2, 28);
+  wav.writeUInt16LE(2 * 2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(dataSize, 40);
+  return wav;
+}
+
+const silentWav = silentWavFixture();
 const voiceProfile = {
   id: uuid,
   name: "Doha Voice",
@@ -138,14 +160,14 @@ async function mockBackend(
     }),
   );
   await page.route("**/backend/api/pipelines/job-001/files/file-1/content", (r) =>
-    r.fulfill({ status: 200, contentType: "audio/wav", body: "RIFFmockWAVE" }),
+    r.fulfill({ status: 200, contentType: "audio/wav", body: silentWav }),
   );
   await page.route("**/backend/api/pipelines/job-001/files/file-1/download", (r) =>
     r.fulfill({
       status: 200,
       contentType: "audio/wav",
       headers: { "Content-Disposition": 'attachment; filename="doha-job-final.wav"' },
-      body: "RIFFmockWAVE",
+      body: silentWav,
     }),
   );
   await page.route("**/backend/api/history**", (route) =>

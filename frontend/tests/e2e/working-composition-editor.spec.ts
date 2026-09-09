@@ -642,10 +642,13 @@ test("WorkingComposition 48개 semantic scenario와 responsive control을 실제
   await expect(page.getByRole("button", { name: "편집 실행 취소" })).toBeEnabled();
   await page.keyboard.press("Control+Z");
   await expectRevision(page, 31);
+  await expect(page.getByRole("button", { name: "편집 다시 실행" })).toBeEnabled();
   await page.keyboard.press("Control+Shift+Z");
   await expectRevision(page, 32);
+  await expect(page.getByRole("button", { name: "편집 실행 취소" })).toBeEnabled();
   await page.keyboard.press("Control+Z");
   await expectRevision(page, 33);
+  await expect(page.getByRole("button", { name: "편집 다시 실행" })).toBeEnabled();
   await page.keyboard.press("Control+Y");
   await expectRevision(page, 34);
 
