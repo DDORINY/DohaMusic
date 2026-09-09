@@ -11,6 +11,14 @@ DohaMusic 프로젝트의 주요 변경 사항을 기록한다. 일반 작업은
 
 ## [Unreleased]
 
+### CI - Frontend Playwright Gate
+
+- `develop` 대상 PR과 `develop` push에서 Chromium Desktop, Tablet, Mobile configured-parallel
+  Playwright 전체 회귀와 실제 Backend/FFmpeg 기반 Export Browser E2E를 실행하는
+  `frontend-playwright` GitHub Actions job을 추가했다.
+- Playwright retry와 worker override 없이 기존 설정을 사용하고, full-stack Export test runtime은
+  GitHub runner temp 경로를 사용하는 cross-platform 격리 환경으로 정합화했다.
+
 ### 추가 - Export Production Worker Runner
 
 - API가 생성한 queued Export Job을 Export-only claim/lease CAS로 발견해 canonical WAV

@@ -1,7 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
+import { resolve } from "node:path";
 
-const runtimeRoot = "D:/Temp/DohaMusic/fullstack-export-runtime";
-const seedFile = "D:/Temp/DohaMusic/fullstack-export-seed.json";
+const testRoot = resolve(process.cwd(), ".test-tmp", "fullstack-export");
+const runtimeRoot = process.env.DOHA_E2E_RUNTIME_ROOT ?? resolve(testRoot, "runtime");
+const allowedParent = process.env.DOHA_E2E_ALLOWED_PARENT ?? testRoot;
+const seedFile = process.env.DOHA_E2E_SEED_FILE ?? resolve(testRoot, "seed.json");
+const python = process.env.DOHA_E2E_PYTHON ?? "python";
 
 process.env.DOHA_E2E_SEED_FILE = seedFile;
 
@@ -14,13 +18,13 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:3200", trace: "retain-on-failure" },
   webServer: [
     {
-      command: "cd .. && D:\\DohaMusic\\.venv\\Scripts\\python.exe -m backend.tests.fullstack_export_server",
+      command: `cd .. && ${python} -m backend.tests.fullstack_export_server`,
       url: "http://127.0.0.1:8000/health",
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
         DOHA_E2E_RUNTIME_ROOT: runtimeRoot,
-        DOHA_E2E_ALLOWED_PARENT: "D:/Temp/DohaMusic",
+        DOHA_E2E_ALLOWED_PARENT: allowedParent,
         DOHA_E2E_SEED_FILE: seedFile,
       },
     },
