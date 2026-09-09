@@ -61,6 +61,15 @@
 | [ADR-055](ADR-055-clip-timeline-duration-and-loop-phase-authority.md) | Clip timeline duration과 source-loop phase의 독립 canonical geometry | 승인, 구현 대기 |
 | [ADR-056](ADR-056-persistent-working-composition-history.md) | WorkingComposition persistent history journal/cursor와 Backend Undo/Redo authority | 승인 |
 | [ADR-057](ADR-057-working-composition-multi-user-conflict-recovery-authority.md) | aggregate revision CAS와 canonical refetch 기반 multi-user conflict recovery | 승인 |
+| [ADR-058](ADR-058-mixer-and-export-rendering-authority.md) | typed Track/Master Mixer와 immutable Snapshot 기반 Export render·quality 권위 | 승인 |
+| [ADR-059](ADR-059-typed-persistent-history-target-authority.md) | Clip·Track·WorkingComposition typed persistent history target 권위 | 승인 |
+| [ADR-060](ADR-060-deterministic-artifact-publish-or-adopt.md) | deterministic Artifact publish-or-adopt와 trusted reopen 권위 | 승인 |
+| [ADR-061](ADR-061-durable-export-publication-ledger.md) | Export publication intent·integrity·crash recovery ledger 권위 | 승인 |
+| [ADR-062](ADR-062-trusted-existing-publication-artifact-registration.md) | durable publication을 재발행 없이 Artifact catalog로 승격하는 trusted 권위 | 승인 |
+| [ADR-063](ADR-063-export-asset-lineage-and-completion-authority.md) | Snapshot 기반 Project Export Asset lineage와 recoverable atomic completion 권위 | 승인 |
+| [ADR-064](ADR-064-project-export-asset-ownership-invariant.md) | ProjectAsset 기반 Export ownership의 DB/domain invariant 경계 | 승인 |
+| [ADR-065](ADR-065-export-production-worker-runner.md) | Export 전용 production polling, claim, restart 및 lifespan authority | 승인 |
+| [ADR-066](ADR-066-silent-export-quality-representation.md) | Silent/low-loudness Export 진단 품질과 nullable metric authority | 승인 |
 
 결정 변경 시 기존 문서를 삭제하지 않고 상태와 대체 ADR 링크를 갱신한다.
 

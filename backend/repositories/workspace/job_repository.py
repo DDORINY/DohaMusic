@@ -123,19 +123,20 @@ class JobRepository:
         claim_token: UUID,
         now: datetime,
         lease_expires_at: datetime,
+        job_type: str | None = None,
     ) -> Job | None:
         """공식 queue 순서의 queued Job 하나를 조건부 atomic claim한다."""
 
+        candidate_query = select(Job.job_id).where(
+            Job.status == JobStatus.QUEUED,
+            Job.cancel_requested_at.is_(None),
+            Job.claim_token.is_(None),
+            Job.lease_expires_at.is_(None),
+        )
+        if job_type is not None:
+            candidate_query = candidate_query.where(Job.job_type == job_type)
         candidate = self.session.scalar(
-            select(Job.job_id)
-            .where(
-                Job.status == JobStatus.QUEUED,
-                Job.cancel_requested_at.is_(None),
-                Job.claim_token.is_(None),
-                Job.lease_expires_at.is_(None),
-            )
-            .order_by(Job.created_at, Job.job_id)
-            .limit(1)
+            candidate_query.order_by(Job.created_at, Job.job_id).limit(1)
         )
         if candidate is None:
             return None
@@ -159,6 +160,8 @@ class JobRepository:
             )
             .returning(Job)
         )
+        if job_type is not None:
+            statement = statement.where(Job.job_type == job_type)
         return self.session.scalars(statement).one_or_none()
 
     def heartbeat_claim(
@@ -184,19 +187,43 @@ class JobRepository:
         )
         return self.session.scalars(statement).one_or_none()
 
-    def recover_expired_claim(self, *, now: datetime) -> Job | None:
+    def recover_expired_claim(
+        self,
+        *,
+        now: datetime,
+        job_type: str | None = None,
+        requeue: bool = False,
+    ) -> Job | None:
+        candidate_query = select(Job.job_id, Job.lease_expires_at).where(
+            Job.status == JobStatus.RUNNING,
+            Job.lease_expires_at.is_not(None),
+            Job.lease_expires_at < now,
+        )
+        if job_type is not None:
+            candidate_query = candidate_query.where(Job.job_type == job_type)
         candidate = self.session.execute(
-            select(Job.job_id, Job.lease_expires_at)
-            .where(
-                Job.status == JobStatus.RUNNING,
-                Job.lease_expires_at.is_not(None),
-                Job.lease_expires_at < now,
-            )
-            .order_by(Job.lease_expires_at, Job.job_id)
-            .limit(1)
+            candidate_query.order_by(Job.lease_expires_at, Job.job_id).limit(1)
         ).one_or_none()
         if candidate is None:
             return None
+        values = (
+            {
+                "status": JobStatus.QUEUED,
+                "claim_token": None,
+                "claimed_by": None,
+                "heartbeat_at": None,
+                "lease_expires_at": None,
+                "started_at": None,
+            }
+            if requeue
+            else {
+                "status": JobStatus.FAILED,
+                "completed_at": now,
+                "error_code": "WORKER_LEASE_EXPIRED",
+                "error_message": "Workspace Job worker lease expired.",
+                "error_retryable": True,
+            }
+        )
         statement = (
             update(Job)
             .where(
@@ -205,15 +232,11 @@ class JobRepository:
                 Job.lease_expires_at == candidate.lease_expires_at,
                 Job.lease_expires_at < now,
             )
-            .values(
-                status=JobStatus.FAILED,
-                completed_at=now,
-                error_code="WORKER_LEASE_EXPIRED",
-                error_message="Workspace Job worker lease expired.",
-                error_retryable=True,
-            )
+            .values(**values)
             .returning(Job)
         )
+        if job_type is not None:
+            statement = statement.where(Job.job_type == job_type)
         return self.session.scalars(statement).one_or_none()
 
     def finish_owned_claim(
@@ -228,14 +251,17 @@ class JobRepository:
         error_message: str | None = None,
         error_retryable: bool | None = None,
     ) -> Job | None:
+        conditions = [
+            Job.job_id == job_id,
+            Job.status == JobStatus.RUNNING,
+            Job.claimed_by == claimed_by,
+            Job.claim_token == claim_token,
+        ]
+        if status is JobStatus.SUCCEEDED:
+            conditions.append(Job.cancel_requested_at.is_(None))
         statement = (
             update(Job)
-            .where(
-                Job.job_id == job_id,
-                Job.status == JobStatus.RUNNING,
-                Job.claimed_by == claimed_by,
-                Job.claim_token == claim_token,
-            )
+            .where(*conditions)
             .values(
                 status=status,
                 completed_at=now,

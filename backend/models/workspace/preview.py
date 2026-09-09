@@ -65,6 +65,9 @@ class WorkingPreviewRender(CreatedAtMixin, Base):
         index=True,
     )
     rendered_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    master_gain_db: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
     workspace_job_id: Mapped[UUID] = mapped_column(
         ForeignKey("jobs.job_id", ondelete="RESTRICT"), nullable=False
     )
@@ -93,6 +96,14 @@ class WorkingPreviewRenderTrack(Base):
     )
     track_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     track_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    gain_db: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    pan: Mapped[Decimal] = mapped_column(
+        Numeric(8, 6), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    muted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    solo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
 
 class WorkingPreviewRenderClip(Base):

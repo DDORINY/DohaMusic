@@ -16,6 +16,7 @@ from backend.core.exceptions import (
     ApplicationValidationError,
     CursorConfigurationError,
     InvalidLimitError,
+    InvalidStateError,
     ResourceConflictError,
     ResourceNotFoundError,
 )
@@ -222,6 +223,12 @@ class AssetService:
             asset = repository.get_asset(asset_id)
             if asset is None:
                 raise ResourceNotFoundError("Asset")
+            if any(
+                item.deleted_at is None
+                and item.project.export_project_asset_id == item.project_asset_id
+                for item in asset.project_assets
+            ):
+                raise InvalidStateError("Project Export Asset")
             repository.soft_delete_asset(asset)
         return asset
 

@@ -13,6 +13,9 @@ from backend.repositories.workspace.composition_history_repository import (
 from backend.repositories.workspace.composition_repository import (
     CompositionRepository,
 )
+from backend.repositories.workspace.export_publication_repository import (
+    ExportPublicationRepository,
+)
 from backend.repositories.workspace.job_repository import JobRepository
 from backend.repositories.workspace.payload_locator_port import (
     PayloadLocatorPersistencePort,
@@ -32,6 +35,7 @@ __all__ = [
     "CollaborationRepository",
     "CompositionRepository",
     "CompositionHistoryRepository",
+    "ExportPublicationRepository",
     "JobRepository",
     "ProviderJobRepository",
     "PayloadLocatorPersistencePort",

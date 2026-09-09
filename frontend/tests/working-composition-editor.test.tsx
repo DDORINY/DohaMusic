@@ -284,10 +284,10 @@ describe("WorkingComposition editor", () => {
     expect(slider).toHaveAttribute("min", "-24");
     expect(slider).toHaveAttribute("max", "24");
     expect(slider).toHaveAttribute("step", "0.01");
-    expect(screen.getByText("0.00 dB")).toBeVisible();
+    expect(screen.getByLabelText("Clip gain exact value")).toHaveValue(0);
     fireEvent.change(slider, { target: { value: "2.00" } });
     fireEvent.pointerCancel(slider, { pointerId: 1 });
-    expect(screen.getByText("0.00 dB")).toBeVisible();
+    expect(screen.getByLabelText("Clip gain exact value")).toHaveValue(0);
     expect(update).not.toHaveBeenCalled();
     fireEvent.change(slider, { target: { value: "1.00" } });
     fireEvent.change(slider, { target: { value: "2.00" } });

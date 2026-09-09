@@ -100,6 +100,31 @@ class ClipGainUpdateRequest(WorkingMutationRequest):
         return value
 
 
+class TrackMixerUpdateRequest(WorkingMutationRequest):
+    gain_db: Decimal
+    pan: Decimal
+    muted: bool
+    solo: bool
+
+    @field_validator("gain_db", "pan", mode="before")
+    @classmethod
+    def reject_non_numeric_json_values(cls, value: object) -> object:
+        if isinstance(value, (str, bool)):
+            raise ValueError("Mixer numeric values must be JSON numbers.")
+        return value
+
+
+class MasterGainUpdateRequest(WorkingMutationRequest):
+    master_gain_db: Decimal
+
+    @field_validator("master_gain_db", mode="before")
+    @classmethod
+    def reject_non_numeric_json_values(cls, value: object) -> object:
+        if isinstance(value, (str, bool)):
+            raise ValueError("master_gain_db must be a JSON number.")
+        return value
+
+
 class ClipFadeUpdateRequest(WorkingMutationRequest):
     fade_in: Decimal
     fade_out: Decimal
@@ -144,6 +169,10 @@ class TrackDetail(_StrictModel):
     track_type: str
     name: str
     track_order: int = Field(ge=0)
+    gain_db: Decimal
+    pan: Decimal
+    muted: bool
+    solo: bool
 
 
 class ClipDetail(_StrictModel):
@@ -179,6 +208,7 @@ class WorkingCompositionDetail(_StrictModel):
     base_composition_snapshot_id: UUID | None
     revision: int = Field(ge=0)
     mix_settings: dict[str, object]
+    master_gain_db: Decimal
     tracks: list[TrackDetail]
     clips: list[ClipDetail]
     timeline_duration: Decimal
@@ -206,6 +236,20 @@ class CompositionCommitResult(_StrictModel):
 
 class TrackMutationResult(_StrictModel):
     track_id: UUID
+    completed_revision: int = Field(ge=0)
+    replayed: bool
+
+
+class MasterGainMutationResult(_StrictModel):
+    working_composition_id: UUID
+    completed_revision: int = Field(ge=0)
+    replayed: bool
+
+
+class HistoryMutationResult(_StrictModel):
+    target_type: Literal["CLIP", "TRACK", "WORKING_COMPOSITION"]
+    target_id: UUID
+    clip_id: UUID | None = None
     completed_revision: int = Field(ge=0)
     replayed: bool
 

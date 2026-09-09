@@ -18,6 +18,8 @@ import {
 } from "./working-waveform";
 import { newIdempotencyKey } from "./working-composition-history";
 import { WorkingPreviewControl } from "./working-preview-control";
+import { TrackMixerButtons, WorkingMixer, type TrackMixerState } from "./working-mixer";
+import { WorkingExportControl } from "./working-export-control";
 
 const MIN_PIXELS_PER_SECOND = 32;
 const MAX_PIXELS_PER_SECOND = 128;
@@ -65,6 +67,7 @@ function WorkingCompositionEditorSession({
 }) {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
+  const [mixerPendingTargets, setMixerPendingTargets] = useState<Set<string>>(() => new Set());
   const [recoveryState, setRecoveryState] = useState<"idle" | "conflict_recovering" | "ready">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +173,24 @@ function WorkingCompositionEditorSession({
       return false;
     } finally {
       setPending(false);
+    }
+  }
+
+  async function mutateMixer<T extends { completed_revision: number }>(target: string, operation: () => Promise<T>) {
+    if (!data || mixerPendingTargets.has(target)) return false;
+    setMixerPendingTargets((current) => new Set(current).add(target));
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await operation();
+      queryClient.setQueryData<WorkingCompositionDto>(queryKey, (current) => current ? { ...current, revision: Math.max(current.revision, result.completed_revision) } : current);
+      await reconcile();
+      return true;
+    } catch (cause) {
+      await fail(cause);
+      return false;
+    } finally {
+      setMixerPendingTargets((current) => { const next = new Set(current); next.delete(target); return next; });
     }
   }
 
@@ -304,6 +325,11 @@ function WorkingCompositionEditorSession({
     ? Number(selectedClip.source_in) + playhead - Number(selectedClip.timeline_start)
     : 0;
   const base = { working_composition_id: data.working_composition_id, expected_revision: data.revision };
+  const updateTrackMixer = (track: WorkingTrackDto, state: TrackMixerState) => mutateMixer(track.track_id,
+    () => withIdempotency((key) => dohaApi.updateWorkingTrackMixer(projectId, track.track_id, {
+      ...base, gain_db: state.gainDb, pan: state.pan, muted: state.muted, solo: state.solo,
+    }, key)),
+  );
 
   return (
     <section className="working-editor" aria-labelledby="working-editor-title">
@@ -357,6 +383,7 @@ function WorkingCompositionEditorSession({
         workingCompositionId={data.working_composition_id}
         currentRevision={data.revision}
         clipCount={data.clips.length}
+        disabled={mixerPendingTargets.size > 0}
         onRevisionConflict={async () => {
           await reconcile();
           setMessage("최신 편집 상태를 불러왔습니다. Preview를 다시 실행해 주세요.");
@@ -392,6 +419,8 @@ function WorkingCompositionEditorSession({
               () => withIdempotency((key) => dohaApi.deleteWorkingTrack(projectId, track.track_id, base, key)),
               () => ({ type: "TRACK_DELETE", trackId: track.track_id, trackOrder: track.track_order }),
             )}
+            mixerPending={mixerPendingTargets.has(track.track_id)}
+            onMixer={(state) => updateTrackMixer(track, state)}
             onDragStart={() => setDraggedTrackId(track.track_id)}
             onDrop={() => {
               if (!draggedTrackId || draggedTrackId === track.track_id) return;
@@ -406,6 +435,22 @@ function WorkingCompositionEditorSession({
           />
         ))}
       </div>
+
+      <WorkingMixer
+        tracks={data.tracks}
+        masterGainDb={data.master_gain_db ?? "0.00"}
+        pendingTargets={mixerPendingTargets}
+        onTrackCommit={updateTrackMixer}
+        onMasterCommit={(masterGainDb) => mutateMixer("master",
+          () => withIdempotency((key) => dohaApi.updateWorkingMasterGain(projectId, { ...base, master_gain_db: masterGainDb }, key)),
+        )}
+      />
+      <WorkingExportControl
+        projectId={projectId}
+        snapshotId={snapshotId}
+        disabled={pending || mixerPendingTargets.size > 0}
+        disabledReason={pending ? "편집 변경을 저장하는 동안에는 WAV를 내보낼 수 없습니다." : mixerPendingTargets.size > 0 ? "Mixer 변경을 저장하는 동안에는 WAV를 내보낼 수 없습니다." : undefined}
+      />
 
       {selectedTrack ? (
         <>
@@ -911,12 +956,13 @@ function ClipLoopControl({ clipId, enabled, timelineDuration, sourceWindow, fade
   </fieldset>;
 }
 
-function TrackRow({ track, selected, pending, onSelect, onRename, onDelete, onDragStart, onDrop }: {
-  track: WorkingTrackDto; selected: boolean; pending: boolean; onSelect: () => void; onRename: (name: string) => void; onDelete: () => void; onDragStart: () => void; onDrop: () => void;
+function TrackRow({ track, selected, pending, mixerPending, onSelect, onRename, onDelete, onMixer, onDragStart, onDrop }: {
+  track: WorkingTrackDto; selected: boolean; pending: boolean; mixerPending: boolean; onSelect: () => void; onRename: (name: string) => void; onDelete: () => void; onMixer: (state: TrackMixerState) => Promise<boolean>; onDragStart: () => void; onDrop: () => void;
 }) {
   return <article role="listitem" className={`working-track-row${selected ? " selected" : ""}`} draggable={!pending} onDragStart={onDragStart} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" aria-pressed={selected} aria-label={`${track.name} Track 선택`} onClick={onSelect}>↕ {track.track_order + 1}</button>
     <Input key={track.name} aria-label={`${track.name} Track 이름`} defaultValue={track.name} disabled={pending} onBlur={(event) => { const next = event.currentTarget.value.trim(); if (next && next !== track.name) onRename(next); }} />
+    <TrackMixerButtons track={track} pending={pending || mixerPending} quick onCommit={onMixer} />
     <button type="button" aria-label={`${track.name} Track 삭제`} disabled={pending} onClick={onDelete}><Trash2 aria-hidden="true" /></button>
   </article>;
 }

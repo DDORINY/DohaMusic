@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -73,6 +74,16 @@ class Workspace(TimestampMixin, SoftDeleteMixin, Base):
 class MusicProject(TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "music_projects"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "export_project_asset_id"],
+            ["project_assets.project_id", "project_assets.project_asset_id"],
+            name="fk_music_projects_export_project_asset",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "export_project_asset_id",
+            name="uq_music_projects_export_project_asset",
+        ),
         Index(
             "ix_music_projects_workspace_active_keyset",
             "workspace_id",
@@ -94,9 +105,22 @@ class MusicProject(TimestampMixin, SoftDeleteMixin, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     lifecycle_status: Mapped[str] = mapped_column(String, nullable=False, index=True)
     created_by: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    export_project_asset_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
 
     workspace: Mapped[Workspace] = relationship(back_populates="projects")
-    project_assets: Mapped[list[ProjectAsset]] = relationship(back_populates="project")
+    project_assets: Mapped[list[ProjectAsset]] = relationship(
+        back_populates="project",
+        foreign_keys="ProjectAsset.project_id",
+    )
+    export_project_asset: Mapped[ProjectAsset | None] = relationship(
+        back_populates="export_owner_project",
+        foreign_keys=[project_id, export_project_asset_id],
+        primaryjoin=(
+            "and_(MusicProject.project_id == ProjectAsset.project_id, "
+            "MusicProject.export_project_asset_id == ProjectAsset.project_asset_id)"
+        ),
+        viewonly=True,
+    )
     composition_snapshots: Mapped[list[CompositionSnapshot]] = relationship(
         back_populates="project"
     )
@@ -107,6 +131,11 @@ class ProjectAsset(CreatedAtMixin, SoftDeleteMixin, Base):
     __tablename__ = "project_assets"
     __table_args__ = (
         UniqueConstraint("project_id", "asset_id", name="uq_project_assets_project_asset"),
+        UniqueConstraint(
+            "project_id",
+            "project_asset_id",
+            name="uq_project_assets_project_identity",
+        ),
         Index(
             "ix_project_assets_active_keyset",
             "project_id",
@@ -131,5 +160,17 @@ class ProjectAsset(CreatedAtMixin, SoftDeleteMixin, Base):
     )
     role: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    project: Mapped[MusicProject] = relationship(back_populates="project_assets")
+    project: Mapped[MusicProject] = relationship(
+        back_populates="project_assets",
+        foreign_keys=[project_id],
+    )
+    export_owner_project: Mapped[MusicProject | None] = relationship(
+        back_populates="export_project_asset",
+        foreign_keys="[MusicProject.project_id, MusicProject.export_project_asset_id]",
+        primaryjoin=(
+            "and_(MusicProject.project_id == ProjectAsset.project_id, "
+            "MusicProject.export_project_asset_id == ProjectAsset.project_asset_id)"
+        ),
+        viewonly=True,
+    )
     asset: Mapped[Asset] = relationship(back_populates="project_assets")

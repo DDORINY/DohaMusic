@@ -126,10 +126,10 @@ async function installNavigationBackend(page: Page) {
       id: projectId, title: "Navigation Project", description: "DAW navigation fixture",
       created_at: "2026-09-03T00:00:00Z", updated_at: "2026-09-03T00:00:00Z", job_count: 0,
     }]);
-    if (path === `/backend/api/projects/${projectId}`) return ok(route, {
-      id: projectId, title: "Navigation Project", description: "DAW navigation fixture",
+    if (path === `/backend/api/v1/projects/${projectId}`) return ok(route, { data: {
+      project_id: projectId, title: "Navigation Project", description: "DAW navigation fixture",
       created_at: "2026-09-03T00:00:00Z", updated_at: "2026-09-03T00:00:00Z", job_count: 0, jobs: [],
-    });
+    } });
     if (path === `/backend/api/v1/projects/${projectId}/composition`) return ok(route, { data: composition() });
     if (path === `/backend/api/v1/projects/${projectId}/working-composition`) return ok(route, { data: {
       working_composition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

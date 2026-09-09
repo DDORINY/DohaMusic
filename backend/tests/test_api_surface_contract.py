@@ -17,7 +17,7 @@ from starlette.routing import BaseRoute
 from backend.app.factory import create_app
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
-EXPECTED_SURFACE_FINGERPRINT = "54e2a14db4d80e990b142f6cb3611e9553b26b363a4acf36cdff4d12537550ec"
+EXPECTED_SURFACE_FINGERPRINT = "81b398c306b03a75d8a8b82469712c10668740c180ee27ed9687e76b7a24ffe4"
 CRITICAL_OPERATIONS = {
     ("GET", "/api/v1/workspaces"),
     ("GET", "/api/v1/projects"),
@@ -36,6 +36,8 @@ CRITICAL_OPERATIONS = {
     ("PATCH", "/api/v1/projects/{project_id}/working-composition/clips/{clip_id}/gain"),
     ("PATCH", "/api/v1/projects/{project_id}/working-composition/clips/{clip_id}/fade"),
     ("PATCH", "/api/v1/projects/{project_id}/working-composition/clips/{clip_id}/loop"),
+    ("PATCH", "/api/v1/projects/{project_id}/working-composition/tracks/{track_id}/mixer"),
+    ("PATCH", "/api/v1/projects/{project_id}/working-composition/master-gain"),
     ("GET", "/api/pipelines/{job_id}/files/{file_id}/content"),
     ("HEAD", "/api/pipelines/{job_id}/files/{file_id}/content"),
     ("POST", "/api/voice-enrollments"),
@@ -164,14 +166,14 @@ def test_complete_runtime_api_surface_is_stable_and_valid() -> None:
     operations = _operations(schema)
 
     _assert_integrity(schema)
-    assert len(routes) == 107
-    assert len(api_routes) == 103
-    assert len(schema["paths"]) == 82
-    assert len(operations) == 103
+    assert len(routes) == 109
+    assert len(api_routes) == 105
+    assert len(schema["paths"]) == 84
+    assert len(operations) == 105
     assert Counter(method for method, _, _ in operations) == {
         "GET": 40,
         "POST": 39,
-        "PATCH": 13,
+        "PATCH": 15,
         "DELETE": 9,
         "HEAD": 2,
     }

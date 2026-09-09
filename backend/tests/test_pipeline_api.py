@@ -260,11 +260,11 @@ class CompletionBoundaryAnalyzer:
         with self.session_factory() as session:
             job = session.get(PipelineJob, job_id)
             assert job is not None
-            assert job.status == JobStatus.COMPLETED.value
+            assert job.status != JobStatus.COMPLETED.value
         return AudioAnalysisResult.failed()
 
 
-def test_analysis_runs_after_irreversible_pipeline_completion(
+def test_analysis_finishes_before_irreversible_pipeline_completion(
     client: TestClient,
 ) -> None:
     profile_id = create_profile(client)
@@ -283,6 +283,17 @@ def test_analysis_runs_after_irreversible_pipeline_completion(
 
     completed = wait_for_pipeline(client, job_id)
     assert completed["status"] == "COMPLETED"
+    final = next(
+        item
+        for item in client.get(f"/api/pipelines/{job_id}/files").json()
+        if item["file_type"] == "final"
+    )
+    with client.app.state.session_factory() as session:
+        stored = session.get(PipelineFile, final["id"])
+        assert stored is not None
+        final_path = client.app.state.storage.resolve_relative_path(stored.file_path)
+    final_path.unlink()
+    assert not final_path.exists()
     assert client.post(f"/api/pipelines/{job_id}/cancel").status_code == 409
 
 

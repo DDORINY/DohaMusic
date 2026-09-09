@@ -25,6 +25,8 @@ class PreviewBackend {
   previewExpired = false;
   workspaceReads = 0;
   historyReads = 0;
+  exportPosts: Array<{ key: string | null; snapshotId: string }> = [];
+  exportJobReads = 0;
   private completionByKey = new Map<string, { jobId: string; revision: number }>();
   private histories = new Map<string, PersistentHistoryFixture>();
 
@@ -37,8 +39,30 @@ class PreviewBackend {
     const path = new URL(request.url()).pathname;
     const method = request.method();
     if (path === "/backend/health") return this.ok(route, { status: "ok" });
-    const projectMatch = path.match(/^\/backend\/api\/projects\/(project-preview-[12])$/);
-    if (projectMatch) return this.ok(route, project(projectMatch[1]));
+    if (path === "/backend/api/v1/jobs" && method === "POST") {
+      const body = request.postDataJSON() as { composition_snapshot_id: string; job_type: string };
+      if (body.job_type !== "export") return this.error(route, 422, "INVALID_JOB_TYPE");
+      this.exportPosts.push({
+        key: request.headers()["idempotency-key"] ?? null,
+        snapshotId: body.composition_snapshot_id,
+      });
+      return this.ok(route, { data: exportJob("queued") }, 201);
+    }
+    if (path === "/backend/api/v1/jobs/job-export") {
+      this.exportJobReads += 1;
+      const status: JobStatus = this.exportJobReads === 1 ? "queued" : this.exportJobReads === 2 ? "running" : "succeeded";
+      return this.ok(route, { data: exportJob(status) });
+    }
+    if (path === "/backend/api/v1/artifacts/artifact-export/content") {
+      return route.fulfill({
+        status: 200,
+        body: silentWav,
+        contentType: "audio/wav",
+        headers: { "Content-Disposition": "attachment; filename=export.wav" },
+      });
+    }
+    const projectMatch = path.match(/^\/backend\/api\/v1\/projects\/(project-preview-[12])$/);
+    if (projectMatch) return this.ok(route, { data: { ...project(projectMatch[1]), project_id: projectMatch[1] } });
     const compositionMatch = path.match(/^\/backend\/api\/v1\/projects\/(project-preview-[12])\/composition$/);
     if (compositionMatch) return this.ok(route, { data: composition(compositionMatch[1]) });
     const workingMatch = path.match(/^\/backend\/api\/v1\/projects\/(project-preview-[12])\/working-composition$/);
@@ -205,7 +229,7 @@ test("explicit Preview, polling, Global Player, stale, rerender와 refresh autho
   await expect(page.getByText("Preview가 최신 편집본과 다릅니다.")).toHaveCount(0);
 
   await page.reload();
-  await expect(page.getByText("준비됨", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("현재 편집본 미리듣기").getByText("준비됨", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Working Preview 만들기" })).toBeEnabled();
   expect(backend.previewPosts).toHaveLength(2);
   expect(pageErrors).toEqual([]);
@@ -255,8 +279,31 @@ test("response-loss same-key, revision conflict, failed/cancelled, expiry와 Pro
   await page.getByRole("button", { name: "Preview 다시 만들기" }).click();
   await expect(page.getByText("대기 중", { exact: true })).toBeVisible();
   await page.goto(`/projects/${secondProjectId}`);
-  await expect(page.getByText("준비됨", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("현재 편집본 미리듣기").getByText("준비됨", { exact: true })).toBeVisible();
   await expect(page.getByText("대기 중", { exact: true })).toHaveCount(0);
+});
+
+test("DAW Export WAV action은 public Job polling 후 Artifact를 다운로드한다", async ({ page }) => {
+  test.setTimeout(60_000);
+  const backend = new PreviewBackend();
+  await backend.install(page);
+  await page.route("**/backend/api/v1/artifacts/artifact-export/content", (route) => route.fulfill({
+    status: 200,
+    body: silentWav,
+    contentType: "audio/wav",
+    headers: { "Content-Disposition": "attachment; filename=export.wav" },
+  }));
+  await page.goto(`/projects/${projectId}`);
+  const exportAction = page.getByRole("button", { name: "Export WAV" });
+  await expect(exportAction).toBeVisible();
+  await exportAction.dblclick();
+  await expect(page.getByText("대기 중", { exact: true })).toBeVisible();
+  await expect(page.getByText("WAV 렌더링 중", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("완료", { exact: true })).toBeVisible({ timeout: 10_000 });
+  expect(backend.exportPosts).toEqual([{ key: expect.any(String), snapshotId: "snapshot-1" }]);
+  await expect(page.getByRole("link", { name: "Download exported WAV" }))
+    .toHaveAttribute("href", "/backend/api/v1/artifacts/artifact-export/content");
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
 function project(id: string) {
@@ -289,6 +336,18 @@ function job(jobId: string, status: JobStatus, revision: number) {
     error_code: status === "failed" ? "WORKING_PREVIEW_SOURCE_UNAVAILABLE" : null,
     error_message: status === "failed" ? "raw path must not render" : null, error_retryable: status === "failed", error_details_id: null,
     rendered_revision: revision,
+  };
+}
+
+function exportJob(status: JobStatus) {
+  return {
+    job_id: "job-export", project_id: projectId, composition_snapshot_id: "snapshot-1",
+    job_type: "export", status, provider_id: null, model_manifest_id: null,
+    progress_percent: null, stage: status === "running" ? "render" : null, retry_of_job_id: null,
+    created_at: "2026-09-09T00:00:00Z", started_at: status === "queued" ? null : "2026-09-09T00:00:01Z",
+    completed_at: status === "succeeded" ? "2026-09-09T00:00:02Z" : null, inputs: [],
+    outputs: status === "succeeded" ? [{ output_role: "export", output_order: 0, asset_version_id: "version-export", artifact_id: "artifact-export" }] : [],
+    model_usages: [], error_code: null, error_message: null, error_retryable: null, error_details_id: null,
   };
 }
 

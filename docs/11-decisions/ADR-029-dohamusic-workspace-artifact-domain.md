@@ -1,6 +1,7 @@
 # ADR-029 — DohaMusic Workspace 전용 `music` Artifact 도메인
 
-> 상태: 제안
+> 상태: 부분 대체됨
+> 대체 결정: [ADR-063](ADR-063-export-asset-lineage-and-completion-authority.md)에서 WorkingComposition/CompositionSnapshot 기반 Export의 즉시 입력 계약을 대체한다. Artifact 도메인과 `music` 저장 영역 결정은 계속 유효하다.
 > 작성일: 2026-08-05
 > 최종 수정일: 2026-08-08
 > 관련 문서: [Artifact Storage 계약](../03-architecture/artifact-storage-contract.md), [Workspace Artifact 모델](../03-architecture/workspace-artifact-model.md), [Storage Architecture](../03-architecture/storage-architecture.md), [Database Overview](../07-database/database-overview.md), [ADR-032](ADR-032-artifact-storage-resolver-integrity.md)

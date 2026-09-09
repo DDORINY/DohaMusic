@@ -95,7 +95,7 @@ JOB_INPUT_ROLES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"vocal", "instrumental"}),
         frozenset({"vocal", "instrumental", "stem"}),
     ),
-    "export": (frozenset({"mix"}), frozenset({"mix"})),
+    "export": (frozenset(), frozenset({"mix"})),
     "working_preview": (frozenset(), frozenset()),
 }
 BYTE_INPUT_ROLES = frozenset(
@@ -243,6 +243,10 @@ class JobService:
             )
         normalized_inputs = self._normalize_contract_inputs(normalized_type, inputs)
         normalized_settings = _validate_job_settings(settings_snapshot)
+        if normalized_type == "export" and normalized_settings != {"format": "wav"}:
+            raise ApplicationValidationError(
+                "Export settings_snapshot은 canonical wav format만 허용합니다."
+            )
         normalized_key = _normalize_idempotency_key(idempotency_key)
         normalized_provider = _optional_bounded_text(
             provider_id, "Provider ID", MAX_PROVIDER_ID_LENGTH
@@ -376,6 +380,29 @@ class JobService:
                         attempt=0,
                     )
                 )
+                if normalized_type == "export":
+                    from backend.models.workspace import (
+                        ExportPublicationState,
+                        JobExportPublication,
+                    )
+                    from backend.repositories.workspace import ExportPublicationRepository
+                    from backend.storage.artifact_publisher import TrustedPublicationIdentity
+
+                    if composition_snapshot_id is None:
+                        raise ApplicationValidationError(
+                            "Export Job에는 CompositionSnapshot이 필요합니다."
+                        )
+                    identity = TrustedPublicationIdentity.for_wav_export(job.job_id)
+                    ExportPublicationRepository(session).add(
+                        JobExportPublication(
+                            job_id=job.job_id,
+                            composition_snapshot_id=composition_snapshot_id,
+                            export_format="wav",
+                            storage_domain=identity.storage_domain,
+                            storage_key=identity.storage_key,
+                            state=ExportPublicationState.INTENDED,
+                        )
+                    )
                 for item in normalized_inputs:
                     job_repository.add_job_input(
                         JobInput(

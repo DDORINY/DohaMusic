@@ -15,7 +15,7 @@ from backend.db.session import create_database_engine
 
 ROOT = Path(__file__).resolve().parents[2]
 REVISION = "20260828_0024"
-SOURCE_HEAD = "20260905_0028"
+SOURCE_HEAD = "20260908_0032"
 PREVIOUS_REVISION = "20260825_0023"
 TABLES = {
     "working_preview_assets",

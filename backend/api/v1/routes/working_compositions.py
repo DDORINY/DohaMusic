@@ -35,12 +35,16 @@ from backend.schemas.workspace import (
     ClipTrimEndRequest,
     ClipTrimStartRequest,
     CompositionCommitResult,
+    HistoryMutationResult,
     InitializeResult,
+    MasterGainMutationResult,
+    MasterGainUpdateRequest,
     ReorderTracksResult,
     SplitClipResult,
     SuccessResponse,
     TrackCreateRequest,
     TrackDetail,
+    TrackMixerUpdateRequest,
     TrackMutationResult,
     TrackRenameRequest,
     TrackReorderRequest,
@@ -129,12 +133,12 @@ def _history_mutation(
         )
     except Exception as exc:
         raise map_working_composition_error(exc) from exc
-    return _success(request, _clip_result(result))
+    return _success(request, _history_result(result))
 
 
 @router.post(
     "/history/undo",
-    response_model=SuccessResponse[ClipMutationResult],
+    response_model=SuccessResponse[HistoryMutationResult],
     operation_id="undo_working_composition_history",
 )
 def undo_working_composition_history(
@@ -144,7 +148,7 @@ def undo_working_composition_history(
     service: WorkingCompositionServiceDependency,
     effective_owner_id: EffectiveOwnerDependency,
     idempotency_key: IdempotencyKeyHeader,
-) -> SuccessResponse[ClipMutationResult]:
+) -> SuccessResponse[HistoryMutationResult]:
     return _history_mutation(
         project_id, payload, request, service, effective_owner_id, idempotency_key, redo=False
     )
@@ -152,7 +156,7 @@ def undo_working_composition_history(
 
 @router.post(
     "/history/redo",
-    response_model=SuccessResponse[ClipMutationResult],
+    response_model=SuccessResponse[HistoryMutationResult],
     operation_id="redo_working_composition_history",
 )
 def redo_working_composition_history(
@@ -162,9 +166,75 @@ def redo_working_composition_history(
     service: WorkingCompositionServiceDependency,
     effective_owner_id: EffectiveOwnerDependency,
     idempotency_key: IdempotencyKeyHeader,
-) -> SuccessResponse[ClipMutationResult]:
+) -> SuccessResponse[HistoryMutationResult]:
     return _history_mutation(
         project_id, payload, request, service, effective_owner_id, idempotency_key, redo=True
+    )
+
+
+@router.patch(
+    "/tracks/{track_id}/mixer",
+    response_model=SuccessResponse[TrackMutationResult],
+    operation_id="update_working_composition_track_mixer",
+)
+def update_track_mixer(
+    project_id: UUID,
+    track_id: UUID,
+    payload: TrackMixerUpdateRequest,
+    request: Request,
+    service: WorkingCompositionServiceDependency,
+    effective_owner_id: EffectiveOwnerDependency,
+    idempotency_key: IdempotencyKeyHeader,
+) -> SuccessResponse[TrackMutationResult]:
+    try:
+        result = service.set_track_mixer(
+            project_id,
+            working_composition_id=payload.working_composition_id,
+            track_id=track_id,
+            gain_db=payload.gain_db,
+            pan=payload.pan,
+            muted=payload.muted,
+            solo=payload.solo,
+            expected_revision=payload.expected_revision,
+            effective_owner_id=effective_owner_id,
+            idempotency_key=idempotency_key,
+        )
+    except Exception as exc:
+        raise map_working_composition_error(exc) from exc
+    return _success(request, _track_result(result))
+
+
+@router.patch(
+    "/master-gain",
+    response_model=SuccessResponse[MasterGainMutationResult],
+    operation_id="update_working_composition_master_gain",
+)
+def update_master_gain(
+    project_id: UUID,
+    payload: MasterGainUpdateRequest,
+    request: Request,
+    service: WorkingCompositionServiceDependency,
+    effective_owner_id: EffectiveOwnerDependency,
+    idempotency_key: IdempotencyKeyHeader,
+) -> SuccessResponse[MasterGainMutationResult]:
+    try:
+        result = service.set_master_gain(
+            project_id,
+            working_composition_id=payload.working_composition_id,
+            master_gain_db=payload.master_gain_db,
+            expected_revision=payload.expected_revision,
+            effective_owner_id=effective_owner_id,
+            idempotency_key=idempotency_key,
+        )
+    except Exception as exc:
+        raise map_working_composition_error(exc) from exc
+    return _success(
+        request,
+        MasterGainMutationResult(
+            working_composition_id=result.identities["working_composition_id"],
+            completed_revision=result.completed_revision,
+            replayed=result.replayed,
+        ),
     )
 
 
@@ -912,6 +982,18 @@ def _clip_result(result: WorkingMutationResult) -> ClipMutationResult:
     )
 
 
+def _history_result(result: WorkingMutationResult) -> HistoryMutationResult:
+    target_type = result.identities.get("target_type", "CLIP")
+    target_id = result.identities.get("target_id", result.identities.get("clip_id"))
+    return HistoryMutationResult(
+        target_type=target_type,
+        target_id=target_id,
+        clip_id=result.identities.get("clip_id"),
+        completed_revision=result.completed_revision,
+        replayed=result.replayed,
+    )
+
+
 def _absolute_clip_response(
     request: Request,
     clip_id: UUID,
@@ -958,12 +1040,17 @@ def _aggregate_detail(
         base_composition_snapshot_id=working.base_composition_snapshot_id,
         revision=working.revision,
         mix_settings=dict(working.mix_settings),
+        master_gain_db=working.master_gain_db,
         tracks=[
             TrackDetail(
                 track_id=track.track_id,
                 track_type=track.track_type,
                 name=track.name,
                 track_order=track.track_order,
+                gain_db=track.gain_db,
+                pan=track.pan,
+                muted=track.muted,
+                solo=track.solo,
             )
             for track in aggregate.tracks
         ],

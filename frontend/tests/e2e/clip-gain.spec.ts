@@ -79,7 +79,7 @@ class GainBackend {
     const key = request.headers()["idempotency-key"] ?? null;
 
     if (path === "/backend/health") return this.ok(route, { status: "ok" });
-    if (path === `/backend/api/projects/${projectId}`) return this.ok(route, project());
+    if (path === `/backend/api/v1/projects/${projectId}`) return this.ok(route, { data: { ...project(), project_id: projectId } });
     if (path === `/backend/api/v1/projects/${projectId}/composition`) return this.ok(route, { data: composition() });
     if (path === "/backend/api/v1/snapshots") return this.ok(route, { data: [] });
     if (path === mediaPath) {
@@ -301,9 +301,12 @@ test("Clip Gain absolute mutation, history, identity, stale Preview와 fail-clos
     await expect.poll(() => backend.gainRequests.length).toBe(1);
     await expect(input).toHaveValue("0.01");
     const viewport = page.viewportSize();
-    const box = await page.locator(".working-clip-gain").boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 1);
+    const gainControl = page.locator(".working-clip-gain");
+    await expect(gainControl).toBeVisible();
+    await expect.poll(async () => {
+      const box = await gainControl.boundingBox();
+      return box !== null && box.x + box.width <= viewport!.width + 1;
+    }).toBe(true);
     expect(pageErrors).toEqual([]);
     return;
   }

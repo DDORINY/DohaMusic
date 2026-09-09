@@ -146,3 +146,12 @@
 .mobile-nav {
   display: none;
 }
+.app-shell-daw {
+  height: 100dvh;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) 92px;
+  overflow: hidden;
+}
+.app-shell-daw .main-workspace { min-height: 0; overflow: auto; padding: 0; }
+.app-shell-daw .context-panel { overflow: auto; }
+.app-shell-daw .player-shell { position: relative; }

@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import BinaryIO, Protocol
 from uuid import UUID
 
+from backend.audio.composition_mixer import db_to_linear, stereo_pan_matrix
+
 MAX_PREVIEW_TRACKS = 64
 MAX_PREVIEW_CLIPS = 512
 MAX_PREVIEW_DURATION_US = 30 * 60 * 1_000_000
@@ -24,6 +26,8 @@ PREVIEW_SAMPLE_RATE = 48_000
 MIN_CLIP_GAIN_DB = Decimal("-24.00")
 MAX_CLIP_GAIN_DB = Decimal("24.00")
 CLIP_GAIN_DB_QUANTUM = Decimal("0.01")
+MIN_MIXER_GAIN_DB = Decimal("-24")
+MAX_MIXER_GAIN_DB = Decimal("24")
 
 
 class PreviewRenderError(RuntimeError):
@@ -59,6 +63,15 @@ class PreviewRenderClip:
 
 
 @dataclass(frozen=True, slots=True)
+class PreviewRenderTrack:
+    track_order: int
+    gain_db: Decimal
+    pan: Decimal
+    muted: bool
+    solo: bool
+
+
+@dataclass(frozen=True, slots=True)
 class PreviewRenderedWav:
     path: Path
     duration_us: int
@@ -74,6 +87,8 @@ class WorkingCompositionPreviewRenderer(Protocol):
         clips: Sequence[PreviewRenderClip],
         *,
         track_count: int,
+        tracks: Sequence[PreviewRenderTrack] | None = None,
+        master_gain_db: Decimal = Decimal("0"),
         cancel_requested: Callable[[], bool] | None = None,
         open_artifact: ArtifactOpener | None = None,
     ) -> AbstractContextManager[PreviewRenderedWav]: ...
@@ -99,10 +114,17 @@ class FfmpegWorkingCompositionPreviewRenderer:
         clips: Sequence[PreviewRenderClip],
         *,
         track_count: int,
+        tracks: Sequence[PreviewRenderTrack] | None = None,
+        master_gain_db: Decimal = Decimal("0"),
         cancel_requested: Callable[[], bool] | None = None,
         open_artifact: ArtifactOpener | None = None,
     ) -> Iterator[PreviewRenderedWav]:
-        ordered = _validate_manifest(clips, track_count=track_count)
+        ordered, mixer_tracks, mixer_master_gain_db = _validate_manifest(
+            clips,
+            track_count=track_count,
+            tracks=tracks,
+            master_gain_db=master_gain_db,
+        )
         artifact_opener = open_artifact or self._open_artifact
         self._temp_root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="working-preview-", dir=self._temp_root) as raw:
@@ -121,7 +143,13 @@ class FfmpegWorkingCompositionPreviewRenderer:
             duration_us = max(item.timeline_start_us + _geometry(item)[0] for item in ordered)
             output = root / "preview.wav"
             command = _ffmpeg_command(
-                self._ffmpeg, inputs, ordered, output=output, duration_us=duration_us
+                self._ffmpeg,
+                inputs,
+                ordered,
+                tracks=mixer_tracks,
+                master_gain_db=mixer_master_gain_db,
+                output=output,
+                duration_us=duration_us,
             )
             process: subprocess.Popen[bytes] | None = None
             try:
@@ -162,8 +190,12 @@ class FfmpegWorkingCompositionPreviewRenderer:
 
 
 def _validate_manifest(
-    clips: Sequence[PreviewRenderClip], *, track_count: int
-) -> tuple[PreviewRenderClip, ...]:
+    clips: Sequence[PreviewRenderClip],
+    *,
+    track_count: int,
+    tracks: Sequence[PreviewRenderTrack] | None,
+    master_gain_db: Decimal,
+) -> tuple[tuple[PreviewRenderClip, ...], tuple[PreviewRenderTrack, ...], Decimal]:
     if not 0 < track_count <= MAX_PREVIEW_TRACKS:
         raise PreviewRenderError("WORKING_PREVIEW_TRACK_LIMIT")
     if not 0 < len(clips) <= MAX_PREVIEW_CLIPS:
@@ -176,6 +208,9 @@ def _validate_manifest(
     )
     if len({item.clip_id for item in ordered}) != len(ordered):
         raise PreviewRenderError("WORKING_PREVIEW_CLIP_DUPLICATE")
+    schemas = {item.manifest_schema for item in ordered}
+    if len(schemas) != 1 or not schemas <= {1, 2, 3, 4, 5}:
+        raise PreviewRenderError("WORKING_PREVIEW_SCHEMA_INVALID")
     for item in ordered:
         gain_db = item.gain_db
         source_window_us = item.source_out_us - item.source_in_us
@@ -200,7 +235,39 @@ def _validate_manifest(
             or item.fade_in_us + item.fade_out_us > timeline_duration_us
         ):
             raise PreviewRenderError("WORKING_PREVIEW_GEOMETRY_INVALID")
-    return ordered
+    schema = next(iter(schemas))
+    if schema <= 4:
+        if tracks is not None or master_gain_db != 0:
+            raise PreviewRenderError("WORKING_PREVIEW_SCHEMA_INVALID")
+        mixer_tracks = tuple(
+            PreviewRenderTrack(index, Decimal("0"), Decimal("0"), False, False)
+            for index in range(track_count)
+        )
+        return ordered, mixer_tracks, Decimal("0")
+    if tracks is None or len(tracks) != track_count or not _valid_mixer_gain(master_gain_db):
+        raise PreviewRenderError("WORKING_PREVIEW_SCHEMA_INVALID")
+    mixer_tracks = tuple(sorted(tracks, key=lambda item: item.track_order))
+    if [item.track_order for item in mixer_tracks] != list(range(track_count)) or any(
+        not _valid_mixer_gain(item.gain_db)
+        or not _valid_pan(item.pan)
+        or not isinstance(item.muted, bool)
+        or not isinstance(item.solo, bool)
+        for item in mixer_tracks
+    ):
+        raise PreviewRenderError("WORKING_PREVIEW_SCHEMA_INVALID")
+    return ordered, mixer_tracks, master_gain_db
+
+
+def _valid_mixer_gain(value: object) -> bool:
+    return (
+        isinstance(value, Decimal)
+        and value.is_finite()
+        and MIN_MIXER_GAIN_DB <= value <= MAX_MIXER_GAIN_DB
+    )
+
+
+def _valid_pan(value: object) -> bool:
+    return isinstance(value, Decimal) and value.is_finite() and Decimal("-1") <= value <= 1
 
 
 def _seconds(microseconds: int) -> str:
@@ -212,6 +279,8 @@ def _ffmpeg_command(
     inputs: Sequence[Path],
     clips: Sequence[PreviewRenderClip],
     *,
+    tracks: Sequence[PreviewRenderTrack],
+    master_gain_db: Decimal,
     output: Path,
     duration_us: int,
 ) -> list[str]:
@@ -219,7 +288,7 @@ def _ffmpeg_command(
     for path in inputs:
         command.extend(["-i", str(path)])
     filters: list[str] = []
-    labels: list[str] = []
+    track_labels: dict[int, list[str]] = {track.track_order: [] for track in tracks}
     for index, clip in enumerate(clips):
         label = f"c{index}"
         delay_samples = (clip.timeline_start_us * PREVIEW_SAMPLE_RATE + 500_000) // 1_000_000
@@ -249,11 +318,39 @@ def _ffmpeg_command(
                 f"d={_seconds(clip.fade_out_us)}:curve=tri"
             )
         filters.append(f"{clip_filters},adelay={delay_samples}S:all=1[{label}]")
-        labels.append(f"[{label}]")
-    filters.append(
-        f"{''.join(labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,"
-        f"apad=whole_dur={_seconds(duration_us)},atrim=duration={_seconds(duration_us)}[out]"
-    )
+        track_labels[clip.track_order].append(f"[{label}]")
+    any_solo = any(track.solo for track in tracks)
+    mixed_track_labels: list[str] = []
+    for track in tracks:
+        labels = track_labels[track.track_order]
+        if not labels:
+            continue
+        if track.muted or (any_solo and not track.solo):
+            filters.append(
+                f"{''.join(labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,anullsink"
+            )
+            continue
+        track_label = f"t{track.track_order}"
+        ll, lr, rl, rr = stereo_pan_matrix(float(track.pan))
+        filters.append(
+            f"{''.join(labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,"
+            f"volume={db_to_linear(float(track.gain_db)):.17g},"
+            f"pan=stereo|c0={ll:.17g}*c0+{lr:.17g}*c1|"
+            f"c1={rl:.17g}*c0+{rr:.17g}*c1[{track_label}]"
+        )
+        mixed_track_labels.append(f"[{track_label}]")
+    master_gain = db_to_linear(float(master_gain_db))
+    if mixed_track_labels:
+        filters.append(
+            f"{''.join(mixed_track_labels)}amix=inputs={len(mixed_track_labels)}:"
+            f"duration=longest:normalize=0,volume={master_gain:.17g},"
+            f"apad=whole_dur={_seconds(duration_us)},atrim=duration={_seconds(duration_us)}[out]"
+        )
+    else:
+        filters.append(
+            f"anullsrc=r={PREVIEW_SAMPLE_RATE}:cl=stereo,"
+            f"atrim=duration={_seconds(duration_us)}[out]"
+        )
     command.extend(
         [
             "-filter_complex",
@@ -276,6 +373,6 @@ def _geometry(clip: PreviewRenderClip) -> tuple[int, bool, int]:
     source_window_us = clip.source_out_us - clip.source_in_us
     if clip.manifest_schema in {1, 2, 3}:
         return source_window_us, False, 0
-    if clip.manifest_schema != 4 or clip.timeline_duration_us is None:
+    if clip.manifest_schema not in {4, 5} or clip.timeline_duration_us is None:
         raise PreviewRenderError("WORKING_PREVIEW_SCHEMA_INVALID")
     return clip.timeline_duration_us, clip.loop_enabled, clip.loop_phase_us

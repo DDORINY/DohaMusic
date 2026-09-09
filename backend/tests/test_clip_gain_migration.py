@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
@@ -12,7 +12,6 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import MetaData, Table, inspect, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import sessionmaker
 
 from backend.db.session import create_database_engine
 from backend.models.workspace import (
@@ -53,7 +52,6 @@ def _config(database_url: str) -> Config:
 
 def _seed_pre_gain_rows(database_url: str) -> None:
     engine = create_database_engine(database_url)
-    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     owner_id = uuid4()
     workspace = Workspace(
         workspace_id=uuid4(),
@@ -158,38 +156,56 @@ def _seed_pre_gain_rows(database_url: str) -> None:
         track_id=track.track_id,
         track_order=0,
     )
-    with factory.begin() as session:
-        session.add(workspace)
-        session.flush()
-        session.add_all([project, source_asset, preview_asset])
-        session.flush()
-        session.add(source_version)
-        session.flush()
-        session.add_all(
-            [
-                artifact,
-                ProjectAsset(
-                    project_id=project.project_id,
-                    asset_id=source_asset.asset_id,
-                    role="music",
-                    display_order=0,
-                ),
-                working,
-                snapshot,
-                job,
-            ]
-        )
-        session.flush()
-        session.add_all(
-            [
-                track,
-                snapshot_track,
-                WorkingPreviewAsset(project_id=project.project_id, asset_id=preview_asset.asset_id),
-                preview_render,
-            ]
-        )
-        session.flush()
-        session.add(preview_track)
+
+    def historical_values(item: object, table: Table) -> dict[str, object]:
+        values: dict[str, object] = {}
+        now = datetime.now(UTC)
+        for column in table.columns:
+            value = getattr(item, column.name, None)
+            if value is not None:
+                value = getattr(value, "value", value)
+                values[column.name] = value.hex if isinstance(value, UUID) else value
+            elif column.primary_key:
+                values[column.name] = uuid4().hex
+            elif column.name in {"created_at", "updated_at"}:
+                values[column.name] = now
+        return values
+
+    project_asset = ProjectAsset(
+        project_id=project.project_id,
+        asset_id=source_asset.asset_id,
+        role="music",
+        display_order=0,
+    )
+    preview_asset_binding = WorkingPreviewAsset(
+        project_id=project.project_id, asset_id=preview_asset.asset_id
+    )
+    ordered_rows = (
+        workspace,
+        project,
+        source_asset,
+        preview_asset,
+        source_version,
+        artifact,
+        project_asset,
+        working,
+        snapshot,
+        job,
+        track,
+        snapshot_track,
+        preview_asset_binding,
+        preview_render,
+        preview_track,
+    )
+    historical_metadata = MetaData()
+    historical_tables: dict[str, Table] = {}
+    with engine.begin() as connection:
+        for item in ordered_rows:
+            table_name = item.__tablename__
+            table = historical_tables.setdefault(
+                table_name, Table(table_name, historical_metadata, autoload_with=connection)
+            )
+            connection.execute(table.insert().values(**historical_values(item, table)))
 
     clip_id = uuid4()
     snapshot_clip_id = uuid4()

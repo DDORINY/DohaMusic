@@ -34,6 +34,13 @@
   }
 }
 @media (max-width: 720px) {
+  .working-export { grid-template-columns: 1fr; }
+  .working-export-actions { justify-content: stretch; }
+  .working-export-actions .button { flex: 1; justify-content: center; }
+  .app-shell-daw { height: 100dvh; padding: 68px 0 136px; overflow: hidden; }
+  .app-shell-daw .main-workspace { height: calc(100dvh - 204px); padding: 0; overflow: auto; }
+  .app-shell-daw .collection-page { padding: 10px; }
+  .app-shell-daw .collection-header { top: 0; align-items: center; flex-direction: row; }
   .landing {
     padding: 0 20px;
   }
@@ -285,6 +292,8 @@ html[data-reduce-motion="true"] * {
   .working-add-clip { overflow: visible; }
   .working-add-clip label { min-width: 0; }
   .working-track-row { grid-template-columns: auto 1fr auto; }
+  .working-track-row .track-mixer-buttons { grid-column: 2 / -1; }
+  .working-mixer > header { align-items: flex-start; flex-direction: column; }
   .working-preview-heading,
   .working-preview-actions { align-items: stretch; flex-direction: column; }
   .working-preview-heading .button,

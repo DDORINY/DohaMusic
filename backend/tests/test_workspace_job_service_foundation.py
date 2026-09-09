@@ -765,6 +765,98 @@ def test_snapshot_requires_exact_version(session_factory) -> None:
         )
 
 
+def test_export_job_uses_required_snapshot_without_mix_input(session_factory) -> None:
+    graph = _seed_graph(session_factory)
+    snapshot = (
+        CompositionService(session_factory)
+        .create_snapshot(
+            project_id=graph.project.project_id,
+            effective_owner_id=graph.owner_id,
+            items=(SnapshotItemInput(graph.version.asset_version_id, "music", 0),),
+            mix_settings_snapshot={},
+            provider_versions={},
+            model_manifest_ids={},
+            idempotency_key="export-snapshot",
+        )
+        .aggregate.snapshot
+    )
+    service = JobService(session_factory)
+
+    created = service.create_job_for_owner(
+        effective_owner_id=graph.owner_id,
+        project_id=graph.project.project_id,
+        job_type="export",
+        api_contract_version="1",
+        settings_snapshot={"format": "wav"},
+        idempotency_key="export-snapshot-only",
+        composition_snapshot_id=snapshot.composition_snapshot_id,
+    )
+    replayed = service.create_job_for_owner(
+        effective_owner_id=graph.owner_id,
+        project_id=graph.project.project_id,
+        job_type="export",
+        api_contract_version="1",
+        settings_snapshot={"format": "wav"},
+        idempotency_key="export-snapshot-only",
+        composition_snapshot_id=snapshot.composition_snapshot_id,
+    )
+
+    assert created.aggregate.job.composition_snapshot_id == snapshot.composition_snapshot_id
+    assert created.aggregate.inputs == ()
+    assert replayed.replayed is True
+    assert replayed.aggregate.job.job_id == created.aggregate.job.job_id
+
+
+def test_export_job_requires_snapshot_and_tolerates_matching_legacy_mix_input(
+    session_factory,
+) -> None:
+    graph = _seed_graph(session_factory)
+    snapshot = (
+        CompositionService(session_factory)
+        .create_snapshot(
+            project_id=graph.project.project_id,
+            effective_owner_id=graph.owner_id,
+            items=(SnapshotItemInput(graph.version.asset_version_id, "mix", 0),),
+            mix_settings_snapshot={},
+            provider_versions={},
+            model_manifest_ids={},
+            idempotency_key="legacy-export-snapshot",
+        )
+        .aggregate.snapshot
+    )
+    service = JobService(session_factory)
+
+    with pytest.raises(ApplicationValidationError):
+        service.create_job_for_owner(
+            effective_owner_id=graph.owner_id,
+            project_id=graph.project.project_id,
+            job_type="export",
+            api_contract_version="1",
+            settings_snapshot={"format": "wav"},
+            idempotency_key="export-without-snapshot",
+        )
+
+    legacy = service.create_job_for_owner(
+        effective_owner_id=graph.owner_id,
+        project_id=graph.project.project_id,
+        job_type="export",
+        api_contract_version="1",
+        settings_snapshot={"format": "wav"},
+        idempotency_key="legacy-export-input",
+        composition_snapshot_id=snapshot.composition_snapshot_id,
+        inputs=(
+            JobReferenceInput(
+                0,
+                artifact_id=graph.artifact.artifact_id,
+                input_role="mix",
+            ),
+        ),
+    )
+
+    assert len(legacy.aggregate.inputs) == 1
+    assert legacy.aggregate.inputs[0].input_role == "mix"
+
+
 def test_progress_transitions_terminal_immutability_and_safe_errors(
     session_factory,
 ) -> None:

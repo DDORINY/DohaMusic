@@ -64,16 +64,16 @@ class WaveformBackend {
     const body = request.postData() ? request.postDataJSON() as Record<string, unknown> : {};
 
     if (path === "/backend/health") return this.data(route, { status: "ok" });
-    if (path === `/backend/api/projects/${projectId}`) {
-      return this.data(route, {
-        id: projectId,
+    if (path === `/backend/api/v1/projects/${projectId}`) {
+      return this.data(route, { data: {
+        project_id: projectId,
         title: "Track Clip Waveform E2E",
         description: "repository-owned synthetic media",
         created_at: "2026-08-28T00:00:00Z",
         updated_at: "2026-08-28T00:00:00Z",
         job_count: 0,
         jobs: [],
-      });
+      } });
     }
     if (path === `/backend/api/v1/projects/${projectId}/composition`) {
       return this.data(route, { data: compositionWorkspace() });
@@ -279,6 +279,7 @@ test("exact AssetVersion Clip waveform projection과 editing history를 실제 m
 
   const secondClip = clipButton(page, IDS.second);
   const moveSignature = await signature(secondWaveform);
+  const initialSourceWindow = await sourceWindow(secondWaveform);
   const moveLeft = await secondClip.evaluate((element) => (element as HTMLElement).style.left);
   await drag(page, secondClip, 64);
   await expectRevision(page, 5);
@@ -288,19 +289,27 @@ test("exact AssetVersion Clip waveform projection과 editing history를 실제 m
   const startHandle = page.getByLabel(`Clip ${IDS.second.slice(0, 8)} 시작 Trim`);
   await drag(page, startHandle, 64);
   await expectRevision(page, 6);
-  const afterStartSignature = await signature(waveform(page, IDS.second));
+  const afterStartWaveform = waveform(page, IDS.second);
+  await expect(afterStartWaveform).not.toHaveAttribute("data-source-window", initialSourceWindow);
+  const afterStartSourceWindow = await sourceWindow(afterStartWaveform);
+  const afterStartSignature = await signature(afterStartWaveform);
   expect(afterStartSignature).not.toBe(moveSignature);
 
   const endHandle = page.getByLabel(`Clip ${IDS.second.slice(0, 8)} 끝 Trim`);
   await drag(page, endHandle, -64);
   await expectRevision(page, 7);
-  const afterEndSignature = await signature(waveform(page, IDS.second));
+  const afterEndWaveform = waveform(page, IDS.second);
+  await expect(afterEndWaveform).not.toHaveAttribute("data-source-window", afterStartSourceWindow);
+  const afterEndSourceWindow = await sourceWindow(afterEndWaveform);
+  const afterEndSignature = await signature(afterEndWaveform);
   expect(afterEndSignature).not.toBe(afterStartSignature);
   await undo(page);
   await expectRevision(page, 8);
+  await expect(waveform(page, IDS.second)).toHaveAttribute("data-source-window", afterStartSourceWindow);
   expect(await signature(waveform(page, IDS.second))).toBe(afterStartSignature);
   await redo(page);
   await expectRevision(page, 9);
+  await expect(waveform(page, IDS.second)).toHaveAttribute("data-source-window", afterEndSourceWindow);
   expect(await signature(waveform(page, IDS.second))).toBe(afterEndSignature);
 
   await clipButton(page, IDS.first).click();
@@ -384,6 +393,11 @@ async function responsiveWaveformSmoke(page: Page, backend: WaveformBackend) {
 function waveform(page: Page, id: string) { return page.getByTestId(`clip-waveform-${id}`); }
 function clipButton(page: Page, id: string) { return page.getByRole("button", { name: new RegExp(`Clip ${id.slice(0, 8)} 선택 및 이동`) }); }
 async function signature(locator: Locator) { return locator.getAttribute("data-waveform-signature"); }
+async function sourceWindow(locator: Locator) {
+  const value = await locator.getAttribute("data-source-window");
+  if (!value) throw new Error("Waveform source window is unavailable");
+  return value;
+}
 async function undo(page: Page) { await page.getByRole("button", { name: "편집 실행 취소" }).click(); }
 async function redo(page: Page) { await page.getByRole("button", { name: "편집 다시 실행" }).click(); }
 async function expectRevision(page: Page, revision: number) { await expect(page.getByText(new RegExp(`revision ${revision} ·`))).toBeVisible(); }

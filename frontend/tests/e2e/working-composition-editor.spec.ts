@@ -18,7 +18,7 @@ const snapshotId = "snapshot-1";
 const workingBase = `/backend/api/v1/projects/${projectId}/working-composition`;
 const silentWav = createSilentWav(30);
 
-type Track = { track_id: string; track_type: string; name: string; track_order: number };
+type Track = { track_id: string; track_type: string; name: string; track_order: number; gain_db?: string; pan?: string; muted?: boolean; solo?: boolean };
 type Clip = {
   clip_id: string;
   track_id: string;
@@ -48,6 +48,7 @@ class StatefulWorkingBackend {
   revision = 0;
   tracks: Track[] = [];
   clips: Clip[] = [];
+  masterGainDb = "0.00";
   tombstonedTracks = new Map<string, Track>();
   tombstonedClips = new Map<string, Clip>();
   splitLineage = new Map<string, { original: Clip; left: Clip; right: Clip }>();
@@ -88,16 +89,16 @@ class StatefulWorkingBackend {
     const idempotencyKey = request.headers()["idempotency-key"] ?? null;
 
     if (path === "/backend/health") return this.data(route, { status: "ok" });
-    if (path === `/backend/api/projects/${projectId}`) {
-      return this.data(route, {
-        id: projectId,
+    if (path === `/backend/api/v1/projects/${projectId}`) {
+      return this.data(route, { data: {
+        project_id: projectId,
         title: "WorkingComposition E2E",
         description: "isolated Playwright fixture",
         created_at: "2026-08-26T00:00:00Z",
         updated_at: "2026-08-26T00:00:00Z",
         job_count: 0,
         jobs: [],
-      });
+      } });
     }
     if (path === `/backend/api/v1/projects/${projectId}/composition`) {
       return this.data(route, { data: compositionWorkspace() });
@@ -166,7 +167,7 @@ class StatefulWorkingBackend {
 
     if (relative === "/tracks" && method === "POST") {
       const trackId = [IDS.track1, IDS.track2, IDS.track3][this.createTrackIndex++] ?? crypto.randomUUID();
-      this.tracks.push({ track_id: trackId, track_type: "audio", name: String(body.name), track_order: this.tracks.length });
+      this.tracks.push({ track_id: trackId, track_type: "audio", name: String(body.name), track_order: this.tracks.length, gain_db: "0.00", pan: "0.00", muted: false, solo: false });
       this.history.barrier();
       return this.mutated(route, idempotencyKey, { track_id: trackId });
     }
@@ -174,6 +175,28 @@ class StatefulWorkingBackend {
       const ordered = body.ordered_track_ids as string[];
       this.tracks = ordered.map((id, index) => ({ ...this.requiredTrack(id), track_order: index }));
       this.history.barrier();
+      return this.mutated(route, idempotencyKey, { working_composition_id: IDS.working });
+    }
+
+    const mixerMatch = relative.match(/^\/tracks\/([^/]+)\/mixer$/);
+    if (mixerMatch && method === "PATCH") {
+      const trackId = decodeURIComponent(mixerMatch[1]);
+      const track = this.requiredTrack(trackId);
+      const before = { gain_db: track.gain_db, pan: track.pan, muted: track.muted, solo: track.solo };
+      const after = { gain_db: Number(body.gain_db).toFixed(2), pan: Number(body.pan).toFixed(2), muted: Boolean(body.muted), solo: Boolean(body.solo) };
+      Object.assign(track, after);
+      this.history.append({
+        clipId: IDS.original,
+        applyBefore: () => Object.assign(this.requiredTrack(trackId), before),
+        applyAfter: () => Object.assign(this.requiredTrack(trackId), after),
+      });
+      return this.mutated(route, idempotencyKey, { track_id: trackId });
+    }
+    if (relative === "/master-gain" && method === "PATCH") {
+      const before = this.masterGainDb;
+      const after = Number(body.master_gain_db).toFixed(2);
+      this.masterGainDb = after;
+      this.history.append({ clipId: IDS.original, applyBefore: () => { this.masterGainDb = before; }, applyAfter: () => { this.masterGainDb = after; } });
       return this.mutated(route, idempotencyKey, { working_composition_id: IDS.working });
     }
 
@@ -348,6 +371,7 @@ class StatefulWorkingBackend {
       project_id: projectId,
       base_composition_snapshot_id: snapshotId,
       revision: this.revision,
+      master_gain_db: this.masterGainDb,
       mix_settings: {},
       tracks: this.tracks.map((track) => ({ ...track })),
       clips: this.clips.map((clip) => ({ ...clip })),
@@ -614,12 +638,17 @@ test("WorkingComposition 48개 semantic scenario와 responsive control을 실제
   await leadInput.fill("Lead Keyboard");
   await leadInput.blur();
   await expectRevision(page, 30);
+  await expect(page.getByLabel("Lead Keyboard Track 이름")).toHaveValue("Lead Keyboard");
+  await expect(page.getByRole("button", { name: "편집 실행 취소" })).toBeEnabled();
   await page.keyboard.press("Control+Z");
   await expectRevision(page, 31);
+  await expect(page.getByRole("button", { name: "편집 다시 실행" })).toBeEnabled();
   await page.keyboard.press("Control+Shift+Z");
   await expectRevision(page, 32);
+  await expect(page.getByRole("button", { name: "편집 실행 취소" })).toBeEnabled();
   await page.keyboard.press("Control+Z");
   await expectRevision(page, 33);
+  await expect(page.getByRole("button", { name: "편집 다시 실행" })).toBeEnabled();
   await page.keyboard.press("Control+Y");
   await expectRevision(page, 34);
 
@@ -682,6 +711,53 @@ test("WorkingComposition 48개 semantic scenario와 responsive control을 실제
   expect(consoleErrors.some((message) => message.includes("ERR_FAILED"))).toBe(true);
   expect(consoleErrors.some((message) => message.includes("409"))).toBe(true);
   expect(failedRequests).toHaveLength(backend.expectedResponseLosses);
+});
+
+test("Mixer canonical mutation, history, reload와 fixed workspace geometry를 검증한다", async ({ page }) => {
+  const backend = new StatefulWorkingBackend();
+  backend.workingExists = true;
+  backend.revision = 2;
+  backend.tracks = [
+    { track_id: IDS.track1, track_type: "audio", name: "Lead", track_order: 0, gain_db: "0.00", pan: "0.00", muted: false, solo: false },
+    { track_id: IDS.track2, track_type: "audio", name: "Bass", track_order: 1, gain_db: "0.00", pan: "0.00", muted: false, solo: false },
+  ];
+  backend.clips = [{ clip_id: IDS.original, track_id: IDS.track1, source_asset_version_id: IDS.assetVersion, timeline_start: "0.000", source_in: "0.000", source_out: "8.000", source_duration: "30.000", timeline_duration: "8.000", loop_enabled: false, loop_phase: "0", gain_db: "0.00", fade_in: "0", fade_out: "0", split_from_clip_id: null }];
+  await backend.install(page);
+  await page.goto(`/projects/${projectId}`);
+
+  const gain = page.getByRole("slider", { name: "Track Lead gain" });
+  await gain.fill("6");
+  await gain.dispatchEvent("pointerup");
+  await expectRevision(page, 3);
+  const pan = page.getByRole("slider", { name: "Track Lead pan" });
+  await pan.fill("-0.5");
+  await pan.dispatchEvent("pointerup");
+  await expectRevision(page, 4);
+  await page.getByRole("button", { name: "Track Lead mute", exact: true }).click();
+  await expectRevision(page, 5);
+  await page.getByRole("button", { name: "Track Lead solo", exact: true }).click();
+  await expectRevision(page, 6);
+  const master = page.getByRole("slider", { name: "Master gain" });
+  await master.fill("-3");
+  await master.dispatchEvent("pointerup");
+  await expectRevision(page, 7);
+  expect(backend.requiredTrackForTest(IDS.track1)).toMatchObject({ gain_db: "6.00", pan: "-0.50", muted: true, solo: true });
+  expect(backend.masterGainDb).toBe("-3.00");
+  await page.reload();
+  await expect(page.getByRole("slider", { name: "Track Lead gain" })).toHaveValue("6");
+  await page.getByRole("button", { name: "편집 실행 취소" }).click();
+  await expectRevision(page, 8);
+  expect(backend.masterGainDb).toBe("0.00");
+
+  const geometry = await page.evaluate(() => ({
+    documentVertical: document.scrollingElement!.scrollHeight - document.scrollingElement!.clientHeight,
+    documentHorizontal: document.scrollingElement!.scrollWidth - document.scrollingElement!.clientWidth,
+    mixerScrollable: Array.from(document.querySelectorAll(".mixer-track-strips")).every((element) => element.scrollWidth >= element.clientWidth),
+  }));
+  expect(geometry.documentVertical).toBeLessThanOrEqual(1);
+  expect(geometry.documentHorizontal).toBeLessThanOrEqual(1);
+  expect(geometry.mixerScrollable).toBe(true);
+  await expect(page.getByLabel("Master mixer strip")).toBeVisible();
 });
 
 test("Gain, Fade, Loop persistent history는 reload 후에도 nonzero phase를 strict LIFO로 복원한다", async ({ page }) => {

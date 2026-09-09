@@ -31,6 +31,11 @@ from backend.models.workspace.composition_history import (
     WorkingCompositionHistoryState,
 )
 from backend.models.workspace.enums import AssetType, JobStatus
+from backend.models.workspace.export import (
+    ExportPublicationState,
+    JobExportPublication,
+    JobExportResult,
+)
 from backend.models.workspace.job import Job, JobInput, JobOutput, ModelUsage
 from backend.models.workspace.payload_locator import PayloadLocator
 from backend.models.workspace.preview import (
@@ -65,6 +70,8 @@ WORKSPACE_ENTITY_CLASSES = (
     Job,
     JobInput,
     JobOutput,
+    JobExportResult,
+    JobExportPublication,
     ProcessingChain,
     ProcessingStep,
     ModelUsage,
@@ -103,6 +110,9 @@ __all__ = [
     "Job",
     "JobInput",
     "JobOutput",
+    "JobExportResult",
+    "JobExportPublication",
+    "ExportPublicationState",
     "JobStatus",
     "ModelUsage",
     "MusicProject",

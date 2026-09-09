@@ -58,7 +58,7 @@ D:/DohaArtifacts/
 ### `music` 하위 구조 [계획]
 
 - `mixes/`: Composition Snapshot을 입력으로 DohaMusic Mixer가 만든 Mix Asset의 파일 Artifact
-- `exports/`: 선택된 Mix AssetVersion에서 만든 WAV·MP3·FLAC 등 최종 Export Artifact
+- `exports/`: immutable CompositionSnapshot에서 만든 WAV·MP3·FLAC 등 최종 Export Artifact. Project-owned Export Asset lineage는 [ADR-063](../11-decisions/ADR-063-export-asset-lineage-and-completion-authority.md)을 따른다.
 - `previews/`: 낮은 용량의 빠른 재생 파일, waveform cache와 기타 재생 파생물
 - `snapshots/`: DB가 소유하는 특정 AssetVersion 조합, processing chain과 mix settings를 재현·교환·백업하기 위한 불변 직렬화 Artifact. 권위 있는 관계 데이터는 DB에 유지
 - `runs/`: Mix Job·Export Job 실행 로그, 설정 snapshot과 안전한 진단 metadata

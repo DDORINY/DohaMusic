@@ -27,6 +27,7 @@ class Settings(BaseModel):
     model_name: str = "mock-music-generator"
     model_version: str = "mock"
     worker_max_threads: int = Field(default=1, ge=1, le=8)
+    export_worker_poll_interval_seconds: float = Field(default=1.0, gt=0, le=60)
     mock_generation_delay_seconds: float = Field(default=3.0, ge=0, le=60)
     stem_provider: str = "mock"
     mock_stem_delay_seconds: float = Field(default=0.1, ge=0, le=60)
@@ -172,6 +173,9 @@ class Settings(BaseModel):
             "MODEL_NAME": "model_name",
             "MODEL_VERSION": "model_version",
             "WORKER_MAX_THREADS": "worker_max_threads",
+            "DOHAMUSIC_EXPORT_WORKER_POLL_INTERVAL_SECONDS": (
+                "export_worker_poll_interval_seconds"
+            ),
             "MOCK_GENERATION_DELAY_SECONDS": "mock_generation_delay_seconds",
             "DOHAMUSIC_STEM_PROVIDER": "stem_provider",
             "MOCK_STEM_DELAY_SECONDS": "mock_stem_delay_seconds",

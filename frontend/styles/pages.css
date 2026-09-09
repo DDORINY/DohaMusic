@@ -168,6 +168,11 @@
 }
 
 .collection-page { min-width: 0; padding: 34px; display: grid; gap: 24px; }
+.app-shell-daw .collection-page { min-height: 100%; padding: 18px; gap: 14px; background: linear-gradient(135deg, #151515 0%, #1e1b18 55%, #121212 100%); }
+.app-shell-daw .collection-header { position: sticky; top: 0; z-index: 8; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, #171717 92%, transparent); backdrop-filter: blur(14px); }
+.app-shell-daw .collection-header h1 { font-size: clamp(1.35rem, 3vw, 2.2rem); }
+.app-shell-daw .collection-editor, .app-shell-daw .history-list { max-height: 15rem; overflow: auto; }
+.app-shell-daw .composition-workspace { min-height: 0; padding: 14px; }
 .collection-header { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
 .collection-header h1 { font-size: clamp(2.4rem, 5vw, 4.5rem); margin: 4px 0; }
 .collection-header p { color: var(--muted); }
@@ -280,3 +285,16 @@
   .timeline-heading { align-items: flex-start; flex-direction: column; }
   .timeline-transport > span { width: 100%; margin-left: 0; }
 }
+.working-export { min-width: 0; display: grid; grid-template-columns: minmax(190px, .8fr) minmax(240px, 1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid #4d4438; border-radius: 14px; background: linear-gradient(100deg, rgba(151, 48, 39, .14), transparent 45%), #151412; }
+.working-export-copy, .working-export-actions { display: flex; align-items: center; gap: 10px; }
+.working-export-copy > svg { width: 22px; color: #e7b77c; }
+.working-export-copy h5 { margin: 2px 0 0; }
+.working-export-status { min-width: 0; display: grid; gap: 3px; }
+.working-export-status strong { color: #f2d1a6; }
+.working-export-status span, .working-export-help { color: var(--muted); font-size: .74rem; }
+.working-export-actions { justify-content: flex-end; flex-wrap: wrap; }
+.working-export-actions .button { white-space: nowrap; }
+.working-export.succeeded { border-color: #42644c; }
+.working-export.failed { border-color: #713c36; }
+.working-export-error, .working-export-help { grid-column: 1 / -1; margin: 0; font-size: .78rem; }
+.working-export-error { color: #ffaaa3; }

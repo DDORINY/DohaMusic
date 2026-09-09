@@ -312,7 +312,7 @@ additive revision `20260828_0024`는 canonical Snapshot과 분리된 Preview lif
 | `working_preview_assets` | `project_id` PK, `asset_id` Unique FK | Project당 non-canonical Preview Asset 하나, 일반 ProjectAsset binding 없음 |
 | `working_preview_renders` | render ID, Project·WorkingComposition·revision·Job·Preview Asset, nullable completion AssetVersion, payload expiry | Job당 manifest 하나, 성공 AssetVersion당 render 하나 |
 | `working_preview_render_tracks` | render ID, canonical Track ID, order | render 안 Track identity/order Unique |
-| `working_preview_render_clips` | render/Clip/Track, canonical order, exact source AssetVersion·Artifact, source/timeline μs, `timeline_duration_us`, `loop_enabled`, `loop_phase_us`, Gain·Fade | >16 Clip 손실 없는 schema 4 exact pin, same-render Track 복합 FK, geometry·Gain·Fade Check |
+| `working_preview_render_clips` | render/Clip/Track, canonical order, exact source AssetVersion·Artifact, source/timeline μs, `timeline_duration_us`, `loop_enabled`, `loop_phase_us`, Gain·Fade | >16 Clip 손실 없는 schema 5 exact pin, same-render Track 복합 FK, geometry·Gain·Fade Check |
 
 `preview_asset_version_id`는 render 성공 전만 nullable이다. 성공 transaction이 새 immutable AssetVersion·Artifact·JobOutput과 함께 연결한다. `artifacts.asset_version_id NOT NULL`은 변경하지 않는다. `payload_expires_at`은 payload retention scan 근거이며 AssetVersion·manifest provenance 삭제 시각이 아니다. 실제 사용자 DB 적용과 backfill은 없다.
 

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
+from uuid import UUID
 
 from fastapi import FastAPI, Request, Response
 
@@ -16,6 +18,7 @@ from backend.api.exception_handlers import register_exception_handlers
 from backend.api.router import api_router
 from backend.api.v1.dependencies import get_request_id, register_request_id_middleware
 from backend.audio.factory import create_audio_mixer
+from backend.audio.working_preview_renderer import FfmpegWorkingCompositionPreviewRenderer
 from backend.audio_analysis import (
     DefaultAudioQualityAnalyzer,
     DefaultHookAnalyzer,
@@ -51,14 +54,20 @@ from backend.services.workspace import (
     ArtifactIngestionService,
     AssetService,
     CompositionService,
+    ExportJobCompletionService,
+    ExportPublicationService,
+    ExportWorkerRunner,
+    ExportWorkerService,
     JobService,
     PayloadLocatorService,
     PayloadStagingService,
+    TrustedArtifactRegistrationService,
     WorkingCompositionService,
     WorkingPreviewService,
     WorkspaceService,
 )
 from backend.storage import ArtifactStorageRoots, LocalFilesystemStagingAdapter
+from backend.storage.artifact_publisher import LocalArtifactPublisher
 from backend.storage.service import StorageService
 from backend.voice_enrollment.maintenance import (
     VoiceEnrollmentMaintenanceService,
@@ -72,6 +81,12 @@ from backend.workers.stem_worker import StemWorker
 from backend.workers.voice_conversion_worker import VoiceConversionWorker
 
 logger = get_logger(__name__)
+
+
+@contextmanager
+def _export_renderer_artifact_placeholder(_artifact_id: UUID) -> Iterator[tuple[int, object]]:
+    raise RuntimeError("Export renderer media access must be supplied by ExportWorkerService")
+    yield 0, object()
 
 
 def run_startup_migration(settings: Settings) -> None:
@@ -228,6 +243,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             session_factory,
             ingestion_service=preview_ingestion_service,
         )
+        export_runner = None
+        if artifact_roots is not None and resolved_settings.artifact_staging_root is not None:
+            staging_root = Path(resolved_settings.artifact_staging_root)
+            publisher = LocalArtifactPublisher(artifact_roots, staging_root)
+            export_ingestion = ArtifactIngestionService(
+                session_factory,
+                artifact_roots=artifact_roots,
+                staging_root=staging_root,
+            )
+            export_publications = ExportPublicationService(
+                session_factory,
+                publisher=publisher,
+            )
+            export_completion = ExportJobCompletionService(
+                session_factory,
+                trusted_registration=TrustedArtifactRegistrationService(
+                    session_factory,
+                    publisher=publisher,
+                    ingestion_service=export_ingestion,
+                ),
+            )
+            export_worker = ExportWorkerService(
+                session_factory,
+                artifacts=app.state.artifact_application_service,
+                renderer=FfmpegWorkingCompositionPreviewRenderer(
+                    ffmpeg_executable=resolved_settings.voice_ffmpeg_executable,
+                    temp_root=staging_root / "canonical-export-render",
+                    open_artifact=_export_renderer_artifact_placeholder,
+                ),
+                publications=export_publications,
+                completion=export_completion,
+            )
+            export_runner = ExportWorkerRunner(
+                session_factory,
+                worker=export_worker,
+                poll_interval_seconds=resolved_settings.export_worker_poll_interval_seconds,
+            )
+        app.state.export_worker_runner = export_runner
         payload_staging_adapter = (
             LocalFilesystemStagingAdapter(
                 resolved_settings.artifact_staging_root,
@@ -304,10 +357,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             storage=storage,
         )
         await voice_maintenance_scheduler.start()
+        if export_runner is not None:
+            await export_runner.start()
         logger.info("application_started")
         try:
             yield
         finally:
+            if export_runner is not None:
+                await export_runner.stop()
             await voice_maintenance_scheduler.stop()
             shared_executor.shutdown(wait=True, cancel_futures=False)
             session_factory.kw["bind"].dispose()
