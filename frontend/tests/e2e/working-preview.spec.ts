@@ -25,8 +25,10 @@ class PreviewBackend {
   previewExpired = false;
   workspaceReads = 0;
   historyReads = 0;
-  exportPosts: Array<{ key: string | null; snapshotId: string }> = [];
+  exportPosts: Array<{ key: string | null; snapshotId: string; format: string }> = [];
   exportJobReads = 0;
+  exportTerminal: JobStatus = "succeeded";
+  holdExport = false;
   private completionByKey = new Map<string, { jobId: string; revision: number }>();
   private histories = new Map<string, PersistentHistoryFixture>();
 
@@ -40,18 +42,25 @@ class PreviewBackend {
     const method = request.method();
     if (path === "/backend/health") return this.ok(route, { status: "ok" });
     if (path === "/backend/api/v1/jobs" && method === "POST") {
-      const body = request.postDataJSON() as { composition_snapshot_id: string; job_type: string };
+      const body = request.postDataJSON() as { composition_snapshot_id: string; job_type: string; settings_snapshot: { format: string } };
       if (body.job_type !== "export") return this.error(route, 422, "INVALID_JOB_TYPE");
       this.exportPosts.push({
         key: request.headers()["idempotency-key"] ?? null,
         snapshotId: body.composition_snapshot_id,
+        format: body.settings_snapshot.format,
       });
       return this.ok(route, { data: exportJob("queued") }, 201);
     }
     if (path === "/backend/api/v1/jobs/job-export") {
       this.exportJobReads += 1;
-      const status: JobStatus = this.exportJobReads === 1 ? "queued" : this.exportJobReads === 2 ? "running" : "succeeded";
+      const status: JobStatus = this.holdExport ? "queued" : this.exportJobReads === 1 ? "queued" : this.exportJobReads === 2 ? "running" : this.exportTerminal;
       return this.ok(route, { data: exportJob(status) });
+    }
+    if (path === "/backend/api/v1/jobs/job-export/cancel" && method === "POST") {
+      this.holdExport = false;
+      this.exportTerminal = "cancelled";
+      this.exportJobReads = 3;
+      return this.ok(route, { data: exportJob("cancelled") });
     }
     if (path === "/backend/api/v1/artifacts/artifact-export/content") {
       return route.fulfill({
@@ -300,10 +309,48 @@ test("DAW Export WAV action은 public Job polling 후 Artifact를 다운로드�
   await expect(page.getByText("대기 중", { exact: true })).toBeVisible();
   await expect(page.getByText("WAV 렌더링 중", { exact: true })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("완료", { exact: true })).toBeVisible({ timeout: 10_000 });
-  expect(backend.exportPosts).toEqual([{ key: expect.any(String), snapshotId: "snapshot-1" }]);
+  expect(backend.exportPosts).toEqual([{ key: expect.any(String), snapshotId: "snapshot-1", format: "wav" }]);
   await expect(page.getByRole("link", { name: "Download exported WAV" }))
     .toHaveAttribute("href", "/backend/api/v1/artifacts/artifact-export/content");
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+});
+
+test("DAW Export format selector creates exact MP3 and FLAC requests", async ({ page }) => {
+  const backend = new PreviewBackend();
+  await backend.install(page);
+  await page.goto(`/projects/${projectId}`);
+  for (const format of ["mp3", "flac"] as const) {
+    const label = format.toUpperCase();
+    await page.getByRole("combobox", { name: "Export format" }).selectOption(format);
+    await page.getByRole("button", { name: `Export ${label}` }).click();
+    await expect(page.getByRole("link", { name: `Download exported ${label}` })).toBeVisible();
+    await page.reload();
+  }
+  expect(backend.exportPosts.map((item) => item.format)).toEqual(["mp3", "flac"]);
+});
+
+test("MP3 Export cancellation preserves format identity", async ({ page }) => {
+  const backend = new PreviewBackend();
+  backend.holdExport = true;
+  await backend.install(page);
+  await page.goto(`/projects/${projectId}`);
+  await page.getByRole("combobox", { name: "Export format" }).selectOption("mp3");
+  await page.getByRole("button", { name: "Export MP3" }).click();
+  await expect(page.getByRole("button", { name: "Cancel MP3 export" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel MP3 export" }).click();
+  await expect(page.getByText("MP3 내보내기가 취소되었습니다.")).toBeVisible();
+});
+
+test("FLAC Export failure remains safe and retryable", async ({ page }) => {
+  const backend = new PreviewBackend();
+  backend.exportTerminal = "failed";
+  await backend.install(page);
+  await page.goto(`/projects/${projectId}`);
+  await page.getByRole("combobox", { name: "Export format" }).selectOption("flac");
+  await page.getByRole("button", { name: "Export FLAC" }).click();
+  await expect(page.getByText("FLAC 내보내기를 완료하지 못했습니다. 새 요청으로 다시 시도할 수 있습니다.")).toBeVisible();
+  await expect(page.getByText("raw path must not render")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Export FLAC" })).toBeEnabled();
 });
 
 function project(id: string) {

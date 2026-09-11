@@ -243,7 +243,11 @@ class JobService:
             )
         normalized_inputs = self._normalize_contract_inputs(normalized_type, inputs)
         normalized_settings = _validate_job_settings(settings_snapshot)
-        if normalized_type == "export" and normalized_settings != {"format": "wav"}:
+        if normalized_type == "export" and normalized_settings not in (
+            {"format": "wav"},
+            {"format": "mp3"},
+            {"format": "flac"},
+        ):
             raise ApplicationValidationError(
                 "Export settings_snapshot은 canonical wav format만 허용합니다."
             )
@@ -392,12 +396,13 @@ class JobService:
                         raise ApplicationValidationError(
                             "Export Job에는 CompositionSnapshot이 필요합니다."
                         )
-                    identity = TrustedPublicationIdentity.for_wav_export(job.job_id)
+                    export_format = normalized_settings["format"]
+                    identity = TrustedPublicationIdentity.for_export(job.job_id, export_format)
                     ExportPublicationRepository(session).add(
                         JobExportPublication(
                             job_id=job.job_id,
                             composition_snapshot_id=composition_snapshot_id,
-                            export_format="wav",
+                            export_format=export_format,
                             storage_domain=identity.storage_domain,
                             storage_key=identity.storage_key,
                             state=ExportPublicationState.INTENDED,

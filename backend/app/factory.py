@@ -17,6 +17,8 @@ from backend.ai.voice_factory import create_voice_converter
 from backend.api.exception_handlers import register_exception_handlers
 from backend.api.router import api_router
 from backend.api.v1.dependencies import get_request_id, register_request_id_middleware
+from backend.audio.export_delivery_encoder import CanonicalExportDeliveryEncoder
+from backend.audio.export_delivery_validator import ExportDeliveryValidator
 from backend.audio.factory import create_audio_mixer
 from backend.audio.working_preview_renderer import FfmpegWorkingCompositionPreviewRenderer
 from backend.audio_analysis import (
@@ -274,6 +276,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 publications=export_publications,
                 completion=export_completion,
+                encoder=CanonicalExportDeliveryEncoder(
+                    ffmpeg_executable=resolved_settings.voice_ffmpeg_executable,
+                    temp_root=staging_root / "export-delivery-encode",
+                ),
+                delivery_validator=ExportDeliveryValidator(
+                    ffmpeg_executable=resolved_settings.voice_ffmpeg_executable,
+                ),
             )
             export_runner = ExportWorkerRunner(
                 session_factory,

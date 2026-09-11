@@ -88,6 +88,39 @@ describe("WorkingExportControl", () => {
   });
 });
 
+describe("WorkingExportControl multi-format", () => {
+beforeEach(() => {
+  vi.spyOn(dohaApi, "createWorkspaceExportJob").mockResolvedValue(exportJob("queued"));
+  vi.spyOn(dohaApi, "getWorkspaceJob").mockResolvedValue(exportJob("succeeded"));
+  vi.spyOn(dohaApi, "cancelWorkspaceJob").mockResolvedValue(exportJob("cancelled"));
+});
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+it.each(["mp3", "flac"] as const)("%s selection drives exact Export request and identity", async (format) => {
+  renderControl();
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Export format" }), format);
+  await userEvent.click(screen.getByRole("button", { name: `Export ${format.toUpperCase()}` }));
+  expect(dohaApi.createWorkspaceExportJob).toHaveBeenCalledWith({
+    project_id: "project-1", job_type: "export", composition_snapshot_id: "snapshot-1",
+    inputs: [], settings_snapshot: { format },
+  }, expect.any(String));
+  expect(await screen.findByRole("link", { name: `Download exported ${format.toUpperCase()}` }))
+    .toHaveAttribute("href", "/backend/api/v1/artifacts/artifact-export/content");
+  expect(screen.getByRole("combobox", { name: "Export format" })).toBeEnabled();
+});
+
+it("freezes active MP3 identity and disables format selection while running", async () => {
+  vi.mocked(dohaApi.getWorkspaceJob).mockResolvedValue(exportJob("running"));
+  renderControl();
+  const selector = screen.getByRole("combobox", { name: "Export format" });
+  await userEvent.selectOptions(selector, "mp3");
+  await userEvent.click(screen.getByRole("button", { name: "Export MP3" }));
+  expect(await screen.findByText("MP3 렌더링 중", { exact: true })).toBeVisible();
+  expect(selector).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel MP3 export" })).toBeVisible();
+});
+});
+
 function renderControl(snapshotId: string | null = "snapshot-1", disabled = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><WorkingExportControl

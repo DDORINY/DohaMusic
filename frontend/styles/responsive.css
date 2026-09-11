@@ -37,6 +37,8 @@
   .working-export { grid-template-columns: 1fr; }
   .working-export-actions { justify-content: stretch; }
   .working-export-actions .button { flex: 1; justify-content: center; }
+  .working-export-format { flex: 1 1 100%; }
+  .working-export-format select { width: 100%; }
   .app-shell-daw { height: 100dvh; padding: 68px 0 136px; overflow: hidden; }
   .app-shell-daw .main-workspace { height: calc(100dvh - 204px); padding: 0; overflow: auto; }
   .app-shell-daw .collection-page { padding: 10px; }

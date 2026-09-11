@@ -76,10 +76,17 @@ class TrustedPublicationIdentity:
     storage_key: str
 
     @classmethod
-    def for_wav_export(cls, job_id: UUID) -> TrustedPublicationIdentity:
+    def for_export(cls, job_id: UUID, export_format: str) -> TrustedPublicationIdentity:
         if type(job_id) is not UUID:
             raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_IDENTITY_INVALID)
-        return cls(job_id, "music", f"exports/{job_id.hex[:2]}/{job_id}/result.wav")
+        normalized = export_format.strip().lower()
+        if normalized not in {"wav", "mp3", "flac"}:
+            raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_IDENTITY_INVALID)
+        return cls(job_id, "music", f"exports/{job_id.hex[:2]}/{job_id}/result.{normalized}")
+
+    @classmethod
+    def for_wav_export(cls, job_id: UUID) -> TrustedPublicationIdentity:
+        return cls.for_export(job_id, "wav")
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,7 +313,10 @@ class LocalArtifactPublisher:
             not isinstance(identity, TrustedPublicationIdentity)
             or identity.storage_domain != "music"
             or identity.storage_key
-            != f"exports/{identity.job_id.hex[:2]}/{identity.job_id}/result.wav"
+            not in {
+                f"exports/{identity.job_id.hex[:2]}/{identity.job_id}/result.{extension}"
+                for extension in ("wav", "mp3", "flac")
+            }
         ):
             raise ArtifactPublishError(ArtifactPublishErrorCode.PUBLICATION_IDENTITY_INVALID)
         try:

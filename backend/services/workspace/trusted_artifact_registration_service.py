@@ -9,6 +9,10 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.audio.export_delivery_validator import (
+    ExportDeliveryFormat,
+    export_delivery_media_type,
+)
 from backend.models.workspace import Artifact, ExportPublicationState, JobStatus
 from backend.models.workspace.identifiers import generate_uuid
 from backend.repositories.workspace import ArtifactStorageRepository, AssetRepository, JobRepository
@@ -144,7 +148,9 @@ class TrustedArtifactRegistrationService:
         with self._session_factory() as session:
             self._assert_claim(session, request)
             publication = ExportPublicationRepository(session).get(request.job_id)
-            identity = TrustedPublicationIdentity.for_wav_export(request.job_id)
+            identity = TrustedPublicationIdentity.for_export(
+                request.job_id, publication.export_format
+            )
             self._assert_publication(publication, identity.storage_key)
             expected_sha256 = publication.expected_sha256
             expected_size = publication.expected_size_bytes
@@ -156,7 +162,9 @@ class TrustedArtifactRegistrationService:
             with self._publisher.open_trusted_publication(
                 identity,
                 artifact_kind="audio",
-                expected_media_type="audio/wav",
+                expected_media_type=export_delivery_media_type(
+                    ExportDeliveryFormat(publication.export_format)
+                ),
                 expected_sha256=expected_sha256,
                 expected_size_bytes=expected_size,
             ) as (verified, _stream):
@@ -190,9 +198,9 @@ class TrustedArtifactRegistrationService:
                 temporary_path=evidence.path,
                 producer_id=request.producer_id,
                 run_id=request.run_id,
-                expected_media_type="audio/wav",
+                expected_media_type=evidence.media.media_type,
                 expected_sha256=evidence.checksum,
-                original_filename="export.wav",
+                original_filename=f"export.{evidence.media.extension}",
             ),
             artifact_id,
             evidence,
@@ -275,7 +283,9 @@ class TrustedArtifactRegistrationService:
     @staticmethod
     def _assert_publication(publication, storage_key: str) -> None:
         identity = (
-            TrustedPublicationIdentity.for_wav_export(publication.job_id) if publication else None
+            TrustedPublicationIdentity.for_export(publication.job_id, publication.export_format)
+            if publication
+            else None
         )
         if (
             publication is None

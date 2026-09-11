@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 interface SeedAuthority { project_id: string; snapshot_id: string }
@@ -9,6 +10,46 @@ test.beforeEach(async ({ page }) => {
     JSON.stringify({ state: { reducedMotion: true, onboardingCompleted: true }, version: 0 }),
   ));
 });
+
+for (const format of ["mp3", "flac"] as const) {
+  test(`real production runner ${format.toUpperCase()} Export downloads canonical delivery`, async ({ page }, testInfo) => {
+    const seed = JSON.parse(readFileSync(process.env.DOHA_E2E_SEED_FILE!, "utf8")) as SeedAuthority;
+    const exportPosts: string[] = [];
+    const failedRequests: string[] = [];
+    page.on("request", (request) => {
+      const path = new URL(request.url()).pathname;
+      if (request.method() === "POST" && path === "/backend/api/v1/jobs") exportPosts.push(path);
+    });
+    page.on("requestfailed", (request) => failedRequests.push(request.url()));
+    await page.goto(`/projects/${seed.project_id}`);
+    const label = format.toUpperCase();
+    await page.getByRole("combobox", { name: "Export format" }).selectOption(format);
+    const action = page.getByRole("button", { name: `Export ${label}` });
+    await action.dblclick();
+    await expect(page.getByLabel("현재 Snapshot 내보내기").getByText("완료", { exact: true }))
+      .toBeVisible({ timeout: 60_000 });
+    expect(exportPosts).toHaveLength(1);
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("link", { name: `Download exported ${label}` }).click();
+    const download = await downloadPromise;
+    const target = testInfo.outputPath(`export.${format}`);
+    await download.saveAs(target);
+    expect(download.suggestedFilename().toLowerCase()).toMatch(new RegExp(`\\.${format}$`));
+    const probe = JSON.parse(execFileSync("ffprobe", [
+      "-v", "error", "-select_streams", "a:0",
+      "-show_entries", "stream=codec_name,sample_rate,channels,bits_per_raw_sample",
+      "-of", "json", target,
+    ], { encoding: "utf8" }));
+    expect(probe.streams[0].codec_name).toBe(format);
+    expect(probe.streams[0].sample_rate).toBe("48000");
+    expect(probe.streams[0].channels).toBe(2);
+    if (format === "flac") expect(probe.streams[0].bits_per_raw_sample).toBe("16");
+    expect(failedRequests).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(action).toBeEnabled();
+  });
+}
 
 test("real production runner Export를 Artifact WAV download까지 완료한다", async ({ page }, testInfo) => {
   const seed = JSON.parse(readFileSync(process.env.DOHA_E2E_SEED_FILE!, "utf8")) as SeedAuthority;
