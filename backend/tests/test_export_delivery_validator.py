@@ -23,7 +23,7 @@ def _require_ffmpeg() -> str:
     return FFMPEG
 
 
-def _encode(path: Path, *, rate: int = 48_000, channels: int = 2) -> None:
+def _encode(path: Path, *, rate: int = 48_000, channels: int = 2, duration: int = 1) -> None:
     codec = {".wav": "pcm_s16le", ".mp3": "libmp3lame", ".flac": "flac"}[path.suffix]
     command = [
         _require_ffmpeg(),
@@ -32,7 +32,7 @@ def _encode(path: Path, *, rate: int = 48_000, channels: int = 2) -> None:
         "-f",
         "lavfi",
         "-i",
-        f"sine=frequency=440:sample_rate={rate}:duration=1",
+        f"sine=frequency=440:sample_rate={rate}:duration={duration}",
         "-ar",
         str(rate),
         "-ac",
@@ -154,16 +154,25 @@ def test_first_frame_recognition_does_not_trust_truncated_mp3(
 def test_truncated_flac_is_rejected(tmp_path: Path, validator: ExportDeliveryValidator) -> None:
     complete = tmp_path / "complete.flac"
     truncated = tmp_path / "truncated.flac"
-    _encode(complete)
+    _encode(complete, duration=4)
     payload = complete.read_bytes()
     truncated.write_bytes(payload[: len(payload) // 2])
+    generic = validate_artifact_media(
+        truncated, artifact_kind="audio", size_bytes=truncated.stat().st_size
+    )
+    assert generic.media_type == "audio/flac"
 
-    with pytest.raises(ExportDeliveryValidationError):
+    with pytest.raises(ExportDeliveryValidationError) as caught:
         validator.validate(
             truncated,
             expected_format=ExportDeliveryFormat.FLAC,
-            expected_duration_us=1_000_000,
+            expected_duration_us=4_000_000,
         )
+
+    assert caught.value.code in {
+        ExportDeliveryValidationErrorCode.DECODE_FAILED,
+        ExportDeliveryValidationErrorCode.DURATION_MISMATCH,
+    }
 
 
 def test_duration_mismatch_is_fail_closed(

@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import BinaryIO
 
 from backend.storage.artifact_media import (
     ArtifactMediaValidationError,
@@ -153,7 +155,13 @@ class ExportDeliveryValidator:
                 raise ExportDeliveryValidationError(
                     ExportDeliveryValidationErrorCode.DURATION_MISMATCH
                 )
-        self._decode(path)
+        decoded_frame_count = self._decode(path)
+        if expected_format is ExportDeliveryFormat.FLAC:
+            expected_frame_count = round(expected_duration_us * sample_rate / 1_000_000)
+            if decoded_frame_count != expected_frame_count:
+                raise ExportDeliveryValidationError(
+                    ExportDeliveryValidationErrorCode.DURATION_MISMATCH
+                )
         return ValidatedExportDelivery(
             expected_format,
             media_type,
@@ -189,32 +197,53 @@ class ExportDeliveryValidator:
             raise ExportDeliveryValidationError(ExportDeliveryValidationErrorCode.INVALID)
         return result
 
-    def _decode(self, path: Path) -> None:
-        _run(
-            [
-                self._ffmpeg,
-                "-v",
-                "error",
-                "-xerror",
-                "-i",
-                str(path),
-                "-map",
-                "0:a:0",
-                "-f",
-                "null",
-                "-",
-            ],
-            timeout=self._timeout,
-            capture_stdout=False,
-        )
+    def _decode(self, path: Path) -> int:
+        frame_size = EXPORT_CHANNELS * EXPORT_BIT_DEPTH // 8
+        with tempfile.TemporaryFile() as decoded:
+            _run(
+                [
+                    self._ffmpeg,
+                    "-v",
+                    "error",
+                    "-xerror",
+                    "-i",
+                    str(path),
+                    "-map",
+                    "0:a:0",
+                    "-c:a",
+                    "pcm_s16le",
+                    "-f",
+                    "s16le",
+                    "pipe:1",
+                ],
+                timeout=self._timeout,
+                capture_stdout=False,
+                stdout_file=decoded,
+            )
+            decoded_size = decoded.tell()
+        if decoded_size % frame_size:
+            raise ExportDeliveryValidationError(ExportDeliveryValidationErrorCode.DECODE_FAILED)
+        return decoded_size // frame_size
 
 
-def _run(command: list[str], *, timeout: int, capture_stdout: bool) -> subprocess.CompletedProcess:
+def _run(
+    command: list[str],
+    *,
+    timeout: int,
+    capture_stdout: bool,
+    stdout_file: BinaryIO | None = None,
+) -> subprocess.CompletedProcess:
     try:
         completed = subprocess.run(
             command,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE if capture_stdout else subprocess.DEVNULL,
+            stdout=(
+                stdout_file
+                if stdout_file is not None
+                else subprocess.PIPE
+                if capture_stdout
+                else subprocess.DEVNULL
+            ),
             stderr=subprocess.DEVNULL,
             check=False,
             timeout=timeout,
