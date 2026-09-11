@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui";
 import { ApiError } from "@/services/api-client";
 import { dohaApi, getArtifactContentUrl } from "@/services/doha-api";
-import type { WorkspaceJobDetailDto, WorkspaceJobStatusDto } from "@/types/api";
+import type { WorkspaceExportFormat, WorkspaceJobDetailDto, WorkspaceJobStatusDto } from "@/types/api";
 import { newIdempotencyKey } from "./working-composition-history";
 
 const EXPORT_POLL_INTERVAL_MS = 1_500;
@@ -22,6 +22,8 @@ export function WorkingExportControl({ projectId, snapshotId, disabled = false, 
   const [creatingForProject, setCreatingForProject] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [selectedFormat, setSelectedFormat] = useState<WorkspaceExportFormat>("wav");
+  const [activeExportFormat, setActiveExportFormat] = useState<WorkspaceExportFormat | null>(null);
 
   useEffect(() => () => { generation.current += 1; creating.current = false; }, [projectId]);
   const job = useQuery({
@@ -38,6 +40,8 @@ export function WorkingExportControl({ projectId, snapshotId, disabled = false, 
   const inProgress = status === "creating" || status === "queued" || status === "running";
   const artifactId = status === "succeeded" ? selectExportArtifact(job.data) : null;
   const canCreate = Boolean(snapshotId) && !disabled && !inProgress;
+  const displayFormat = activeExportFormat ?? selectedFormat;
+  const formatLabel = displayFormat.toUpperCase();
 
   async function createExport() {
     if (!canCreate || creating.current || !snapshotId) return;
@@ -45,11 +49,13 @@ export function WorkingExportControl({ projectId, snapshotId, disabled = false, 
     setCreatingForProject(projectId);
     const currentGeneration = ++generation.current;
     const key = newIdempotencyKey();
+    const submittedFormat = selectedFormat;
+    setActiveExportFormat(submittedFormat);
     setIsCreating(true); setRequestError(null);
     try {
       const response = await retryExportPost(() => dohaApi.createWorkspaceExportJob({
         project_id: projectId, job_type: "export", composition_snapshot_id: snapshotId,
-        inputs: [], settings_snapshot: { format: "wav" },
+        inputs: [], settings_snapshot: { format: submittedFormat },
       }, key));
       if (generation.current === currentGeneration) setJobId(response.job_id);
     } catch (error) {
@@ -74,12 +80,13 @@ export function WorkingExportControl({ projectId, snapshotId, disabled = false, 
   }
 
   return <section className={`working-export ${status}`} aria-labelledby="working-export-title">
-    <div className="working-export-copy"><FileAudio aria-hidden="true" /><div><p className="eyebrow">WAV EXPORT</p><h5 id="working-export-title">현재 Snapshot 내보내기</h5></div></div>
-    <div className="working-export-status" role="status" aria-live="polite"><strong>{statusLabel(status)}</strong><span>{statusDescription(status)}</span></div>
+    <div className="working-export-copy"><FileAudio aria-hidden="true" /><div><p className="eyebrow">AUDIO EXPORT</p><h5 id="working-export-title">현재 Snapshot 내보내기</h5></div></div>
+    <div className="working-export-status" role="status" aria-live="polite"><strong>{statusLabel(status, formatLabel)}</strong><span>{statusDescription(status, formatLabel)}</span></div>
     <div className="working-export-actions">
-      <Button type="button" aria-label="Export WAV" disabled={!canCreate} onClick={() => void createExport()}><FileAudio aria-hidden="true" />{TERMINAL.has(status as WorkspaceJobStatusDto) ? "새 WAV 내보내기" : "Export WAV"}</Button>
-      {(status === "queued" || status === "running") && <Button type="button" className="secondary" aria-label="Cancel WAV export" disabled={isCancelling} onClick={() => void cancelExport()}><Square aria-hidden="true" />{isCancelling ? "취소 요청 중" : "내보내기 취소"}</Button>}
-      {artifactId && <a className="button secondary" aria-label="Download exported WAV" href={getArtifactContentUrl(artifactId)} download><Download aria-hidden="true" /> WAV 다운로드</a>}
+      <label className="working-export-format"><span>Format</span><select aria-label="Export format" value={selectedFormat} disabled={inProgress} onChange={(event) => setSelectedFormat(event.target.value as WorkspaceExportFormat)}><option value="wav">WAV</option><option value="mp3">MP3</option><option value="flac">FLAC</option></select></label>
+      <Button type="button" aria-label={`Export ${selectedFormat.toUpperCase()}`} disabled={!canCreate} onClick={() => void createExport()}><FileAudio aria-hidden="true" />Export {selectedFormat.toUpperCase()}</Button>
+      {(status === "queued" || status === "running") && <Button type="button" className="secondary" aria-label={`Cancel ${formatLabel} export`} disabled={isCancelling} onClick={() => void cancelExport()}><Square aria-hidden="true" />{isCancelling ? "취소 요청 중" : "내보내기 취소"}</Button>}
+      {artifactId && <a className="button secondary" aria-label={`Download exported ${formatLabel}`} href={getArtifactContentUrl(artifactId)} download><Download aria-hidden="true" /> {formatLabel} 다운로드</a>}
     </div>
     {!snapshotId && <p className="working-export-help">내보낼 canonical Snapshot이 없습니다.</p>}
     {disabled && disabledReason && <p className="working-export-help">{disabledReason}</p>}
@@ -102,13 +109,13 @@ async function retryExportPost<T>(operation: () => Promise<T>): Promise<T> {
 
 function exportErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.code === "COMPOSITION_SNAPSHOT_NOT_FOUND") return "내보낼 Snapshot을 찾을 수 없습니다.";
-  return "WAV 내보내기를 시작하거나 확인하지 못했습니다.";
+  return "오디오 내보내기를 시작하거나 확인하지 못했습니다.";
 }
 
-function statusLabel(status: WorkspaceJobStatusDto | "creating" | "idle"): string {
-  return { idle: "준비됨", creating: "Export 준비 중", queued: "대기 중", running: "WAV 렌더링 중", succeeded: "완료", failed: "실패", cancelled: "취소됨" }[status];
+function statusLabel(status: WorkspaceJobStatusDto | "creating" | "idle", format: string): string {
+  return { idle: "준비됨", creating: "Export 준비 중", queued: "대기 중", running: `${format} 렌더링 중`, succeeded: "완료", failed: "실패", cancelled: "취소됨" }[status];
 }
 
-function statusDescription(status: WorkspaceJobStatusDto | "creating" | "idle"): string {
-  return { idle: "WAV · 48 kHz · Stereo · PCM16", creating: "canonical Snapshot으로 Export Job을 만들고 있습니다.", queued: "Export Job이 production runner를 기다리고 있습니다.", running: "frozen Snapshot을 WAV로 렌더링하고 있습니다.", succeeded: "완성된 WAV를 Artifact 경로로 다운로드할 수 있습니다.", failed: "완료하지 못했습니다. 새 요청으로 다시 시도할 수 있습니다.", cancelled: "WAV 내보내기가 취소되었습니다." }[status];
+function statusDescription(status: WorkspaceJobStatusDto | "creating" | "idle", format: string): string {
+  return { idle: "WAV · MP3 · FLAC", creating: `canonical Snapshot으로 ${format} Export Job을 만들고 있습니다.`, queued: `${format} Export Job이 production runner를 기다리고 있습니다.`, running: `frozen Snapshot을 ${format}로 렌더링하고 있습니다.`, succeeded: `완성된 ${format}를 Artifact 경로로 다운로드할 수 있습니다.`, failed: `${format} 내보내기를 완료하지 못했습니다. 새 요청으로 다시 시도할 수 있습니다.`, cancelled: `${format} 내보내기가 취소되었습니다.` }[status];
 }

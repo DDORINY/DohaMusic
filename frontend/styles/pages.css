@@ -294,6 +294,9 @@
 .working-export-status span, .working-export-help { color: var(--muted); font-size: .74rem; }
 .working-export-actions { justify-content: flex-end; flex-wrap: wrap; }
 .working-export-actions .button { white-space: nowrap; }
+.working-export-format { display: grid; gap: 3px; color: var(--muted); font-size: .68rem; }
+.working-export-format select { min-width: 76px; border: 1px solid #5a5043; border-radius: 8px; padding: 7px 9px; color: var(--foreground); background: #201e1a; font: inherit; font-size: .78rem; }
+.working-export-format select:focus-visible { outline: 2px solid #e7b77c; outline-offset: 2px; }
 .working-export.succeeded { border-color: #42644c; }
 .working-export.failed { border-color: #713c36; }
 .working-export-error, .working-export-help { grid-column: 1 / -1; margin: 0; font-size: .78rem; }

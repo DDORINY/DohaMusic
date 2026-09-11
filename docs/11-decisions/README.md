@@ -70,6 +70,8 @@
 | [ADR-064](ADR-064-project-export-asset-ownership-invariant.md) | ProjectAsset 기반 Export ownership의 DB/domain invariant 경계 | 승인 |
 | [ADR-065](ADR-065-export-production-worker-runner.md) | Export 전용 production polling, claim, restart 및 lifespan authority | 승인 |
 | [ADR-066](ADR-066-silent-export-quality-representation.md) | Silent/low-loudness Export 진단 품질과 nullable metric authority | 승인 |
+| [ADR-067](ADR-067-trusted-export-delivery-validation.md) | Export delivery의 전체 decode 및 형식 검증 authority | 승인 |
+| [ADR-068](ADR-068-canonical-multiformat-export-encoding.md) | Canonical WAV 기반 MP3/FLAC encoding authority | 승인 |
 
 결정 변경 시 기존 문서를 삭제하지 않고 상태와 대체 ADR 링크를 갱신한다.
 

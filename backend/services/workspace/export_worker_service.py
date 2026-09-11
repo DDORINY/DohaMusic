@@ -18,6 +18,11 @@ from backend.audio.export_analyzer import (
     CanonicalWavExportAnalyzer,
     ExportAnalysisError,
 )
+from backend.audio.export_delivery_encoder import CanonicalExportDeliveryEncoder
+from backend.audio.export_delivery_validator import (
+    ExportDeliveryFormat,
+    ExportDeliveryValidator,
+)
 from backend.audio.working_preview_renderer import (
     PreviewRenderClip,
     PreviewRenderError,
@@ -47,6 +52,8 @@ class _FrozenExport:
     tracks: tuple[PreviewRenderTrack, ...]
     master_gain_db: object
     fingerprint: str
+    export_format: ExportDeliveryFormat
+    duration_us: int
 
 
 class ExportWorkerService:
@@ -61,6 +68,8 @@ class ExportWorkerService:
         publications: ExportPublicationService,
         completion: ExportJobCompletionService,
         analyzer: CanonicalWavExportAnalyzer | None = None,
+        encoder: CanonicalExportDeliveryEncoder | None = None,
+        delivery_validator: ExportDeliveryValidator | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._artifacts = artifacts
@@ -68,6 +77,8 @@ class ExportWorkerService:
         self._publications = publications
         self._completion = completion
         self._analyzer = analyzer or CanonicalWavExportAnalyzer()
+        self._encoder = encoder
+        self._delivery_validator = delivery_validator
 
     def execute_owned_claim(
         self, *, job_id: UUID, claimed_by: str, claim_token: UUID
@@ -99,6 +110,7 @@ class ExportWorkerService:
         self, *, job_id: UUID, claimed_by: str, claim_token: UUID
     ) -> ExportJobCompletionResult:
         frozen, owner_id, state = self._load(job_id, claimed_by, claim_token)
+        export_format = getattr(frozen, "export_format", ExportDeliveryFormat.WAV)
         if state is ExportPublicationState.COMPLETED:
             raise ExportWorkerError("EXPORT_ALREADY_COMPLETED")
         if state is ExportPublicationState.PUBLISHED:
@@ -112,25 +124,29 @@ class ExportWorkerService:
                 claimed_by=claimed_by,
                 claim_token=claim_token,
             ) as (payload, _stream):
-                analysis = self._analyzer.analyze(payload.path)
+                self._validate_delivery(payload.path, frozen)
+            with self._render(frozen, owner_id, job_id, claimed_by, claim_token) as output:
+                analysis = self._analyzer.analyze(output.path)
         else:
             with self._render(frozen, owner_id, job_id, claimed_by, claim_token) as output:
                 analysis = self._analyzer.analyze(output.path)
-                with output.path.open("rb") as stream:
-                    integrity = calculate_artifact_integrity(stream)
-                self._publications.set_expected_integrity(
-                    job_id=job_id,
-                    claimed_by=claimed_by,
-                    claim_token=claim_token,
-                    sha256=integrity.checksum,
-                    size_bytes=integrity.size_bytes,
-                )
-                self._publications.publish_or_recover(
-                    job_id=job_id,
-                    claimed_by=claimed_by,
-                    claim_token=claim_token,
-                    staged_payload=output.path,
-                )
+                with self._encode(output.path, export_format) as delivery:
+                    self._validate_delivery(delivery.path, frozen)
+                    with delivery.path.open("rb") as stream:
+                        integrity = calculate_artifact_integrity(stream)
+                    self._publications.set_expected_integrity(
+                        job_id=job_id,
+                        claimed_by=claimed_by,
+                        claim_token=claim_token,
+                        sha256=integrity.checksum,
+                        size_bytes=integrity.size_bytes,
+                    )
+                    self._publications.publish_or_recover(
+                        job_id=job_id,
+                        claimed_by=claimed_by,
+                        claim_token=claim_token,
+                        staged_payload=delivery.path,
+                    )
         return self._completion.complete(
             ExportJobCompletionRequest(
                 job_id=job_id,
@@ -140,6 +156,7 @@ class ExportWorkerService:
                 quality=analysis.quality,
                 analyzer_name=EXPORT_ANALYZER_NAME,
                 analyzer_version=EXPORT_ANALYZER_VERSION,
+                export_format=export_format.value,
             )
         )
 
@@ -193,14 +210,18 @@ class ExportWorkerService:
             render_tracks = tuple(
                 PreviewRenderTrack(t.track_order, t.gain_db, t.pan, t.muted, t.solo) for t in tracks
             )
+            export_format = ExportDeliveryFormat(job.settings_snapshot.get("format", "wav"))
+            codec = {"wav": "pcm_s16le", "mp3": "libmp3lame-320k", "flac": "flac-8"}[
+                export_format.value
+            ]
             fingerprint = hashlib.sha256(
                 json.dumps(
                     {
                         "snapshot_id": str(snapshot.composition_snapshot_id),
-                        "format": "wav",
+                        "format": export_format.value,
                         "sample_rate": 48_000,
                         "channels": 2,
-                        "codec": "pcm_s16le",
+                        "codec": codec,
                     },
                     sort_keys=True,
                     separators=(",", ":"),
@@ -209,6 +230,7 @@ class ExportWorkerService:
             publication = self._publications.ensure_intent(
                 job_id=job_id,
                 composition_snapshot_id=snapshot.composition_snapshot_id,
+                export_format=export_format.value,
             )
             return (
                 _FrozenExport(
@@ -216,6 +238,8 @@ class ExportWorkerService:
                     render_tracks,
                     snapshot.master_gain_db,
                     fingerprint,
+                    export_format,
+                    max(c.timeline_start_us + c.timeline_duration_us for c in render_clips),
                 ),
                 job.requested_by,
                 publication.state,
@@ -239,6 +263,28 @@ class ExportWorkerService:
             open_artifact=open_artifact,
         ) as output:
             yield output
+
+    @contextmanager
+    def _encode(self, path, export_format):
+        if export_format is ExportDeliveryFormat.WAV:
+            yield type("Delivery", (), {"path": path})()
+            return
+        if self._encoder is None:
+            raise ExportWorkerError("EXPORT_ENCODER_UNAVAILABLE")
+        with self._encoder.encode(path, export_format=export_format) as delivery:
+            yield delivery
+
+    def _validate_delivery(self, path, frozen) -> None:
+        export_format = getattr(frozen, "export_format", ExportDeliveryFormat.WAV)
+        if self._delivery_validator is None:
+            if export_format is ExportDeliveryFormat.WAV:
+                return
+            raise ExportWorkerError("EXPORT_VALIDATOR_UNAVAILABLE")
+        self._delivery_validator.validate(
+            path,
+            expected_format=export_format,
+            expected_duration_us=frozen.duration_us,
+        )
 
     def _cancelled(self, job_id, claimed_by, claim_token) -> bool:
         with self._session_factory() as session:

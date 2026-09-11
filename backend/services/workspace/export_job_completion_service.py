@@ -11,6 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.audio.export_delivery_validator import (
+    ExportDeliveryFormat,
+    export_delivery_media_type,
+)
 from backend.audio.export_quality import (
     MAXIMUM_LUFS,
     MAXIMUM_TRUE_PEAK_DBTP,
@@ -67,6 +71,7 @@ class ExportJobCompletionRequest:
     quality: ExportQualityDecision
     analyzer_name: str
     analyzer_version: str
+    export_format: str = "wav"
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +121,7 @@ class ExportJobCompletionService:
                         claimed_by=request.claimed_by,
                         claim_token=request.claim_token,
                         asset_version_id=version.asset_version_id,
-                        producer_id="canonical-wav-export",
+                        producer_id="canonical-export",
                         run_id=str(job.job_id),
                     )
                     artifact = self._registration.register_in_session(
@@ -134,7 +139,7 @@ class ExportJobCompletionService:
                     result = JobExportResult(
                         job_id=job.job_id,
                         composition_snapshot_id=job.composition_snapshot_id,
-                        export_format="wav",
+                        export_format=request.export_format,
                         render_fingerprint=request.render_fingerprint,
                         exported_asset_version_id=version.asset_version_id,
                         exported_artifact_id=artifact.artifact_id,
@@ -221,7 +226,19 @@ class ExportJobCompletionService:
                 if result is not None
                 else None
             )
-            identity = TrustedPublicationIdentity.for_wav_export(job_id)
+            identity = (
+                TrustedPublicationIdentity.for_export(job_id, result.export_format)
+                if result is not None
+                else None
+            )
+            try:
+                expected_media_type = (
+                    export_delivery_media_type(ExportDeliveryFormat(result.export_format))
+                    if result is not None
+                    else None
+                )
+            except ValueError:
+                expected_media_type = None
             if (
                 result is None
                 or publication is None
@@ -234,7 +251,7 @@ class ExportJobCompletionService:
                 or job.composition_snapshot_id != result.composition_snapshot_id
                 or publication.composition_snapshot_id != result.composition_snapshot_id
                 or publication.export_format != result.export_format
-                or result.export_format != "wav"
+                or identity is None
                 or project is None
                 or membership is None
                 or membership.project_id != project.project_id
@@ -243,6 +260,8 @@ class ExportJobCompletionService:
                 or version.asset_id != membership.asset_id
                 or artifact is None
                 or artifact.asset_version_id != version.asset_version_id
+                or expected_media_type is None
+                or artifact.media_type != expected_media_type
                 or location is None
                 or location.storage_backend != SUPPORTED_STORAGE_BACKEND
                 or location.storage_domain != identity.storage_domain
@@ -362,6 +381,7 @@ class ExportJobCompletionService:
             or output.artifact_id != result.exported_artifact_id
             or publication.artifact_id != result.exported_artifact_id
             or result.render_fingerprint != request.render_fingerprint
+            or result.export_format != request.export_format
         ):
             raise ExportJobCompletionError(ExportJobCompletionErrorCode.CONFLICT)
         return ExportJobCompletionResult(result, output)

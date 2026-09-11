@@ -494,10 +494,12 @@ export interface WorkspaceJobDetailDto {
   error_details_id: string | null;
 }
 
+export type WorkspaceExportFormat = "wav" | "mp3" | "flac";
+
 export interface WorkspaceExportJobCreateDto {
   project_id: string;
   job_type: "export";
   composition_snapshot_id: string;
   inputs: [];
-  settings_snapshot: { format: "wav" };
+  settings_snapshot: { format: WorkspaceExportFormat };
 }

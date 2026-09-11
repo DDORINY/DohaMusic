@@ -13,6 +13,11 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.audio.export_delivery_validator import (
+    ExportDeliveryFormat,
+    export_delivery_media_type,
+    parse_export_delivery_format,
+)
 from backend.models.workspace.enums import JobStatus
 from backend.models.workspace.export import ExportPublicationState, JobExportPublication
 from backend.repositories.workspace.export_publication_repository import (
@@ -66,10 +71,12 @@ class ExportPublicationService:
     def ensure_intent(
         self, *, job_id: UUID, composition_snapshot_id: UUID, export_format: str = "wav"
     ) -> JobExportPublication:
-        normalized_format = export_format.strip().lower()
-        if normalized_format != "wav":
-            raise ExportPublicationError(ExportPublicationErrorCode.CONFLICT)
-        identity = TrustedPublicationIdentity.for_wav_export(job_id)
+        try:
+            parsed_format = parse_export_delivery_format(export_format)
+        except Exception:
+            raise ExportPublicationError(ExportPublicationErrorCode.CONFLICT) from None
+        normalized_format = parsed_format.value
+        identity = TrustedPublicationIdentity.for_export(job_id, normalized_format)
         try:
             with self._session_factory() as session, session.begin():
                 jobs = JobRepository(session)
@@ -155,7 +162,9 @@ class ExportPublicationService:
                     staged_payload,
                     identity=identity,
                     artifact_kind="audio",
-                    expected_media_type="audio/wav",
+                    expected_media_type=export_delivery_media_type(
+                        ExportDeliveryFormat(publication.export_format)
+                    ),
                     expected_sha256=publication.expected_sha256,
                     expected_size_bytes=publication.expected_size_bytes,
                 )
@@ -163,7 +172,9 @@ class ExportPublicationService:
                 with self._publisher.open_trusted_publication(
                     identity,
                     artifact_kind="audio",
-                    expected_media_type="audio/wav",
+                    expected_media_type=export_delivery_media_type(
+                        ExportDeliveryFormat(publication.export_format)
+                    ),
                     expected_sha256=publication.expected_sha256,
                     expected_size_bytes=publication.expected_size_bytes,
                 ) as (result, _stream):
@@ -222,7 +233,9 @@ class ExportPublicationService:
             with self._publisher.open_trusted_publication(
                 self._identity(publication),
                 artifact_kind="audio",
-                expected_media_type="audio/wav",
+                expected_media_type=export_delivery_media_type(
+                    ExportDeliveryFormat(publication.export_format)
+                ),
                 expected_sha256=publication.expected_sha256,
                 expected_size_bytes=publication.expected_size_bytes,
             ) as opened:
@@ -305,7 +318,9 @@ class ExportPublicationService:
 
     @staticmethod
     def _identity(publication: JobExportPublication) -> TrustedPublicationIdentity:
-        identity = TrustedPublicationIdentity.for_wav_export(publication.job_id)
+        identity = TrustedPublicationIdentity.for_export(
+            publication.job_id, publication.export_format
+        )
         if (
             identity.storage_domain != publication.storage_domain
             or identity.storage_key != publication.storage_key
